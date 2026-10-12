@@ -80,9 +80,28 @@ export async function playTracks(keys: string[], zoneName: string, how: How) {
       const res = await playTrack(c, z.oid, order[i].oid, p === 0 ? (i === 0 ? 0 : 4) : p);
       if (!res.success) throw new RoonError(`Roon refused track ${i + 1} of ${order.length} (${res.status}); ${done} were queued`);
       done += 1;
+      // "Now" empties the queue a moment AFTER it answers ok — what was queued right behind it was wiped (12 Oct: two
+      // tracks asked, one in the queue). So after the first: wait until Roon plays or loads it (at most 5 s).
+      if (p === 0 && i === 0 && order.length > 1) {
+        const first = String(field(order[0], 'Title') ?? '');
+        const end = Date.now() + 5000;
+        while (Date.now() < end) {
+          const off = officialZone(z.name);
+          if ((off?.state === 'playing' || off?.state === 'loading') && String(off.now_playing?.three_line?.line1 ?? off.now_playing?.one_line?.line1 ?? '').includes(first)) break;
+          await wait(150);
+        }
+        await wait(300);
+      }
     }
     log(`play_tracks (${how}): ${done} tracks on ${z.name}`);
-    return { zone: z.name, how, count: done, titles: tracks.map((t) => field(t, 'Title')) };
+    // Read the queue back: are they all there?
+    let queued: number | undefined;
+    const q = obj(c, field(c.graph.getObject(z.oid), 'Queue'));
+    if (q) { await wait(600); const rr = await c.call('Queue', 'GetItems', [{ type: 'ResultCallback<IList<TransportItem>>', name: 'cb_result' }], Buffer.alloc(0), q.oid).catch(() => null);
+      if (rr?.success && rr.payload.length > 1) { const br = new BinaryReader(Uint8Array.from(rr.payload)); br.integer(); const total = br.flexInt();
+        const at = Math.max(0, field(c.graph.getObject(q.oid), 'CurrentItemIndex') ?? 0); queued = Math.max(0, total - at); } }
+    return { zone: z.name, how, count: done, titles: tracks.map((t) => field(t, 'Title')), in_queue: queued,
+             note: p === 0 && queued !== undefined && queued < done ? `Roon has ${queued} of the ${done} in the queue` : undefined };
   });
   return { ok: true, ...r, ...(await started(r.zone, p)) };
 }
@@ -92,12 +111,20 @@ const BUTTONS: Record<string, 'Pause' | 'Play' | 'PlayPause' | 'Stop' | 'Next' |
 export async function control(zoneName: string, action: string) {
   const m = BUTTONS[action];
   if (!m) throw new RoonError(`Unknown action; choose from ${Object.keys(BUTTONS).join(', ')}`, 'invalid');
-  return withCore(async (c) => {
+  const r = await withCore(async (c) => {
     const z = findZone(c, zoneName);
     c.zoneControl(z.oid, m);   // no answer: Roon carries it out or not
     log(`control: ${m} on ${z.name}`);
-    return { ok: true, zone: z.name, action };
+    return { zone: z.name };
   });
+  // Roon gives no answer to a button and changes the state a moment later: wait (at most 3 s) until it shows, and say it.
+  const expect: Record<string, string[]> = { pause: ['paused'], stop: ['stopped', 'paused'], play: ['playing', 'loading'] };
+  let state = officialZone(r.zone)?.state;
+  if (expect[action]) {
+    const end = Date.now() + 3000;
+    while (Date.now() < end && !expect[action].includes(state ?? '')) { await wait(150); state = officialZone(r.zone)?.state; }
+  }
+  return { ok: !expect[action] || expect[action].includes(state ?? ''), zone: r.zone, action, state };
 }
 
 export async function seek(zoneName: string, seconds: number) {

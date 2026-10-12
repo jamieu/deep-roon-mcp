@@ -35,6 +35,8 @@ let transport: any = null;   // eslint-disable-line @typescript-eslint/no-explic
 const zones = new Map<string, OfficialZone>();
 let started = false;
 let waiting: (() => void)[] = [];
+let zonesIn = false;                  // the first "Subscribed" came in
+let zoneWaiting: (() => void)[] = [];
 
 /** Connects to the Core's extension API and keeps the connection (back off 5 s, 15 s, 60 s, then every 5 minutes). */
 export function startOfficial(target: Target): void {
@@ -55,7 +57,10 @@ export function startOfficial(target: Target): void {
       if (!transport) { log('paired, but the Core offers no transport service'); return; }
       log(`paired with ${core.display_name} (Roon › Settings › Extensions)`);
       transport.subscribe_zones((cmd: string, data: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
-        if (cmd === 'Subscribed') { zones.clear(); for (const z of data.zones ?? []) zones.set(z.zone_id, z); }
+        if (cmd === 'Subscribed') {
+          zones.clear(); for (const z of data.zones ?? []) zones.set(z.zone_id, z);
+          zonesIn = true; const w = zoneWaiting; zoneWaiting = []; for (const f of w) f();
+        }
         else if (cmd === 'Changed') {
           for (const z of data.zones_added ?? []) zones.set(z.zone_id, z);
           for (const z of data.zones_changed ?? []) zones.set(z.zone_id, z);
@@ -65,7 +70,7 @@ export function startOfficial(target: Target): void {
       });
       const w = waiting; waiting = []; for (const f of w) f();
     },
-    core_unpaired() { transport = null; zones.clear(); log('unpaired from the Core'); },
+    core_unpaired() { transport = null; zones.clear(); zonesIn = false; log('unpaired from the Core'); },
   });
   roon.init_services({ required_services: [RoonApiTransport] });
   let tries = 0;
@@ -73,7 +78,7 @@ export function startOfficial(target: Target): void {
     roon.ws_connect({
       host: target.host, port: target.port,
       onclose: () => {
-        transport = null; zones.clear();
+        transport = null; zones.clear(); zonesIn = false;
         const delay = [5, 15, 60][tries] ?? 300; tries += 1;
         setTimeout(connect, delay * 1000).unref();
       },
@@ -92,6 +97,13 @@ export async function paired(ms = 8000): Promise<any> { // eslint-disable-line @
 
 export const officialZones = (): OfficialZone[] => [...zones.values()];
 
+/** Paired, and the zones in (they come a moment after the pairing): what the volume and the state need. */
+export async function officialReady(ms = 4000): Promise<void> {
+  await paired();
+  if (zonesIn) return;
+  await new Promise<void>((resolve) => { zoneWaiting.push(resolve); setTimeout(resolve, ms).unref(); });
+}
+
 /** A zone by (part of) its name, as the official API knows it. */
 export function officialZone(name: string): OfficialZone | undefined {
   const want = name.toLowerCase(), all = officialZones();
@@ -102,6 +114,7 @@ export function officialZone(name: string): OfficialZone | undefined {
 /** Absolute volume on every output of a zone that has one, in that zone's own scale; or mute / unmute. */
 export async function setVolume(name: string, change: { value?: number; mute?: boolean }) {
   const t = await paired();
+  await officialReady();
   const z = officialZone(name);
   if (!z) throw new RoonError(`No Roon zone called "${name}"; Roon has: ${officialZones().map((x) => x.display_name).join(', ')}`, 'not_found');
   const outs = z.outputs.filter((o) => o.volume);

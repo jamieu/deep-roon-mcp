@@ -5,7 +5,7 @@ import { isRef } from '../intern';
 import { Arg, buildArgs } from '../intern/proto/serializer';
 import { BinaryWriter } from '../intern/proto/writer';
 import { formatMethodSignature } from '../intern/catalog/signature';
-import { withCore, RoonError } from '../core/session';
+import { withCore, fresh, RoonError } from '../core/session';
 import { officialZone } from '../core/official';
 import { log } from '../core/log';
 import { Any, C, albumRow, clean, dotnetDate, field, flag, items, localTime, obj, resultRow, short, untilField, untilLoaded, wait } from './graph';
@@ -384,11 +384,26 @@ export async function dspSet(zoneName: string, s: { enabled?: boolean; part?: st
     log(`dsp: ${z.name} ← ${JSON.stringify(what)} → ${res.success ? 'ok' : res.status}`);
     if (!res.success) throw new RoonError(`Roon refused the DSP change (${res.status})`);
     if (field(d, 'AutoApply') !== true) { try { c.remoting.callMethodNoReply(d.oid, formatMethodSignature('DspConfig', 'Apply', []), Buffer.alloc(0)); } catch { /* applied by itself */ } }
-    // Read back.
-    await wait(500);
-    const after = await dspOf(c, e);
-    const check = !after ? undefined : s.preset ? field(obj(c, field(after, 'ActivePreset')), 'Name') === what.preset
-      : s.part ? dspParts(c, after).find((x) => x.part === s.part)?.on === s.enabled : (field(after, 'IsEnabled') === true) === s.enabled;
+    // Read back — Roon pushes the change a moment later (12 Oct: read at 0.5 s it still showed the old state), so look for
+    // up to 3 s before saying it didn't change.
+    let check: boolean | undefined;
+    const end = Date.now() + 3000;
+    do {
+      await wait(400);
+      const after = await dspOf(c, e);
+      check = !after ? undefined : s.preset ? field(obj(c, field(after, 'ActivePreset')), 'Name') === what.preset
+        : s.part ? dspParts(c, after).find((x) => x.part === s.part)?.on === s.enabled : (field(after, 'IsEnabled') === true) === s.enabled;
+    } while (check === false && Date.now() < end);
+    // Within the same connection the Core doesn't always push the part's new state (12 Oct: switched off, still "on" here,
+    // "off" over a new connection). One more look over a fresh one before saying it didn't change.
+    if (check === false) {
+      const c2 = await fresh();
+      const z2 = findZone(c2, zoneName);
+      const e2 = outputsOf(c2, z2.oid)[0];
+      const after = e2 ? await dspOf(c2, e2) : null;
+      check = !after ? undefined : s.preset ? field(obj(c2, field(after, 'ActivePreset')), 'Name') === what.preset
+        : s.part ? dspParts(c2, after).find((x) => x.part === s.part)?.on === s.enabled : (field(after, 'IsEnabled') === true) === s.enabled;
+    }
     return { ok: check !== false, zone: z.name, ...what, note: check === false ? 'Roon said ok, but the DSP didn\'t change' : undefined };
   });
 }

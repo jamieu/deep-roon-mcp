@@ -1,7 +1,7 @@
 // Roon's zones as the internal protocol knows them, and what plays in each.
 import { isRef } from '../intern';
 import { withCore, RoonError } from '../core/session';
-import { officialZone } from '../core/official';
+import { officialReady, officialZone } from '../core/official';
 import { Any, C, clean, dotnetDate, duration, field, items, localTime, obj } from './graph';
 
 /** The outputs there are now: per name only the current one. A Squeezebox player that reconnects leaves its old output
@@ -53,6 +53,7 @@ const REPEAT: Record<number, string> = { 1: 'all', 2: 'one' };                  
 
 /** What plays per zone: state, track, album, artist, format, position. */
 export async function nowPlaying() {
+  await officialReady().catch(() => {});
   return withCore(async (c) => {
     const names = zoneNames(c);
     // Only zones with an output: after a transfer the old zone objects stay in the graph.
@@ -60,8 +61,13 @@ export async function nowPlaying() {
       const r: Any = { zone: names.get(String(z.oid)), state: STATE[field(z, 'State') ?? 0] ?? String(field(z, 'State')) };
       // The volume, from the official API (the internal graph doesn't carry it).
       const off = officialZone(r.zone);
+      // The state from the official API when it's there: the graph lags a moment behind (a pause read back at once still
+      // said "playing", 12 Oct).
+      if (off?.state) r.state = off.state;
       const v = off?.outputs.find((o) => o.volume)?.volume;
       if (v) { r.volume = v.value; r.volume_max = v.max; if (v.is_muted) r.muted = true; }
+      const outs = c.graph.findByType('Endpoint').filter((e) => { const zz = field(e, 'Zone'); return isRef(zz) && String(zz.$ref) === String(z.oid); });
+      if (outs.some((e) => field(e, 'IsStandby') === true)) r.standby = true;
       if (field(z, 'Shuffle') === true) r.shuffle = true;
       const loop = REPEAT[field(z, 'Loop') ?? 0]; if (loop) r.repeat = loop;
       if (field(z, 'AutoSwim') === true) r.roon_radio = true;
