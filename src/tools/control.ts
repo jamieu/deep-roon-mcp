@@ -35,10 +35,11 @@ export function registerControlTools(server: McpServer, internal = true): void {
 
   reg('roon_control', {
     title: 'Transport',
-    description: 'The buttons of a Roon zone: pause, play (resume), playpause, stop, next, previous. Only on an explicit request, never as a probe.',
-    inputSchema: { zone, action: z.enum(['pause', 'play', 'playpause', 'stop', 'next', 'previous']) },
+    description: 'The buttons of a Roon zone: pause, play (resume), playpause, stop, next, previous — and release: let go of the audio device right away (what Roon does by itself a few seconds after a pause), so another source can use the speaker. Only on an explicit request, never as a probe.',
+    inputSchema: { zone, action: z.enum(['pause', 'play', 'playpause', 'stop', 'next', 'previous', 'release']) },
     annotations: PLAYS,
-  }, ({ zone: zn, action }) => run(() => (internal ? ctl.control(zn, action) : off.control(zn, action))));
+  }, ({ zone: zn, action }) => run(() => (internal ? ctl.control(zn, action)
+    : action === 'release' ? Promise.reject(new Error('release needs Roon\'s internal protocol (switched off)')) : off.control(zn, action))));
 
   reg('roon_seek', {
     title: 'Seek',

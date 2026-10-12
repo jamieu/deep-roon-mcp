@@ -109,6 +109,16 @@ export async function playTracks(keys: string[], zoneName: string, how: How) {
 const BUTTONS: Record<string, 'Pause' | 'Play' | 'PlayPause' | 'Stop' | 'Next' | 'Previous'> =
   { pause: 'Pause', play: 'Play', playpause: 'PlayPause', stop: 'Stop', next: 'Next', previous: 'Previous' };
 export async function control(zoneName: string, action: string) {
+  // release: Zone::Suspend — what Roon does by itself a few seconds after a pause: the zone lets go of its device at once,
+  // so another source can have it (a speaker that holds on to Roon's session otherwise stays Roon's for a while).
+  if (action === 'release') {
+    return withCore(async (c) => {
+      const z = findZone(c, zoneName);
+      c.remoting.callMethodNoReply(z.oid, formatMethodSignature('Zone', 'Suspend', []), Buffer.alloc(0));
+      log(`control: Suspend on ${z.name}`);
+      return { ok: true, zone: z.name, action };
+    });
+  }
   const m = BUTTONS[action];
   if (!m) throw new RoonError(`Unknown action; choose from ${Object.keys(BUTTONS).join(', ')}`, 'invalid');
   const r = await withCore(async (c) => {
