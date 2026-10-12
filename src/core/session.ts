@@ -44,7 +44,7 @@ async function locate(): Promise<Target> {
     if (!cores.length) {
       // macOS 15 and later: an app needs the user's permission for the local network, and Claude Desktop runs this with its
       // own Node — without it the search finds nothing, silently (12 Oct, René's Mac: Claude asked, he allowed, found).
-      const mac = process.platform === 'darwin' ? ' On a Mac, check System Settings › Privacy & Security › Local Network: the app that runs Deep Roon MCP (e.g. Claude) must be allowed.' : '';
+      const mac = process.platform === 'darwin' ? ' On a Mac, check System Settings › Privacy & Security › Local Network: the app that runs Deep Roon MCP must be allowed (for Claude Desktop: Claude and Claude Helper).' : '';
       throw new RoonError(`No Roon Core found on this network.${mac} On another network (a VPN, Tailscale), set ROON_HOST to the Core's address.`, 'unavailable');
     }
     if (cores.length > 1) log(`found ${cores.length} Roon Cores (${cores.map((c) => c.name ?? c.host).join(', ')}) — using ${cores[0].name ?? cores[0].host}; set ROON_HOST to choose`);
