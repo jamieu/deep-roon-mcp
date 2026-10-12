@@ -144,7 +144,7 @@ export function resultRow(c: C, o: Any): Any {
   if (t === 'PerformerLite' || t === 'Performer') {
     const r: Any = { kind: 'artist', key: String(field(o, 'PerformerId') ?? ''), name: field(o, 'Name') ?? '' };
     const n = field(o, 'MainPerformerAlbumCount'); if (typeof n === 'number' && n > 0) r.albums_in_library = n;
-    const img = imageKey(c, o); if (img) r.image = img;
+    const img = imageKey(c, o, 'Photo') ?? imageKey(c, o, 'Avatar'); if (img) r.image = img;   // a Performer has Photo and Avatar, not Image
     return r;
   }
   if (t === 'TrackLite' || t === 'Track') {

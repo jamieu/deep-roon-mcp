@@ -4,7 +4,7 @@ import { Arg, buildArgs } from '../intern/proto/serializer';
 import { BinaryReader } from '../intern/proto/reader';
 import { BinaryWriter } from '../intern/proto/writer';
 import { withCore, RoonError } from '../core/session';
-import { Any, C, albumRow, clean, dateText, duration, field, flag, items, obj, partialList, refList, resultRow, short, strings, untilField, untilLoaded, wait } from './graph';
+import { Any, C, albumRow, clean, dateText, duration, field, flag, imageKey, items, obj, partialList, refList, resultRow, short, strings, untilField, untilLoaded, wait } from './graph';
 
 // ---- the streaming services ----
 export type Service = 'qobuz' | 'tidal';
@@ -313,6 +313,7 @@ export async function bio(key: string, max: number, wiki: boolean) {
     const from = field(p, 'BirthPlace'); if (from) artist.from = from;
     const ya = field(p, 'YearsActive'); if (Buffer.isBuffer(ya) && ya.length >= 2) { const y = new BinaryReader(Uint8Array.from(ya)).flexInt() >>> 16; if (y > 1000 && y < 3000) artist.active_since = y; }
     const g = list('Genres').filter((x) => typeof x === 'string'); if (g.length) artist.genres = g;
+    const img = imageKey(c, p, 'Photo') ?? imageKey(c, p, 'Avatar'); if (img) artist.image = img;
     return { artist, texts, note: texts.length ? undefined : 'Roon has no biography for this artist.',
              similar: people('SimilarTo'), influenced_by: people('Followed'), influenced: people('Influenced'),
              worked_with: people('CollaboratorWith', 'IsAssociatedWith'), member_of: people('MemberOf'), members: people('Members') };
@@ -336,6 +337,7 @@ export async function discography(key: string, wanted?: Service) {
     const artist: Any = { key, name: field(p, 'Name') };
     const n = field(p, 'MainPerformerAlbumCount'); if (typeof n === 'number') artist.albums_in_library = n;
     const from = field(p, 'BirthPlace'); if (from) artist.from = from;
+    const img = imageKey(c, p, 'Photo') ?? imageKey(c, p, 'Avatar'); if (img) artist.image = img;
     return { service: SERVICE_NAME[service], artist, albums };
   });
 }
