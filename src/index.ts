@@ -17,7 +17,7 @@ const INSTRUCTIONS = `Deep Roon MCP connects to the user's own Roon Core (music 
 - Unofficial: this uses Roon's internal protocol, which a Roon update can change; if a tool says so, tell the user to check for an update.`;
 
 async function main(): Promise<void> {
-  const server = new McpServer({ name: 'deep-roon-mcp', version }, { instructions: INSTRUCTIONS });
+  const server = new McpServer({ name: 'deep-roon-mcp', title: 'Deep Roon MCP', version, websiteUrl: 'https://github.com/renebouwmeester/deep-roon-mcp' }, { instructions: INSTRUCTIONS });
   registerReadTools(server);
   await server.connect(new StdioServerTransport());
   log(`${version} ready (stdio)`);
