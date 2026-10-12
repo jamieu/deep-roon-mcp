@@ -15,7 +15,7 @@ server of its own and sends nothing anywhere else. What you ask goes to your MCP
 
 ## Status
 
-Version 0.1 (in progress). Library, playlists, Focus, Home (Daily Picks, mixes) and DSP follow.
+Version 0.1 (in progress): 49 tools.
 
 **Reading** — changes nothing in Roon:
 
@@ -34,6 +34,20 @@ Version 0.1 (in progress). Library, playlists, Focus, Home (Daily Picks, mixes) 
 | `roon_cover` | The cover of what plays, as an image |
 | `roon_history` | Roon's play history, newest first |
 | `roon_top` | Most played albums, artists or tracks over your whole history |
+| `roon_library` | Your library with Roon's Focus: stars, genre, label, artist, composer, producer, years, hi-res, live … sorted any way |
+| `roon_focus` | The Focus panel: what your library (or part of it) is made of, with counts |
+| `roon_tracks`, `roon_artists` | Focus on tracks and artists (and composers) |
+| `roon_works`, `roon_work` | Compositions, and one work with its description and your recordings of it |
+| `roon_daily_picks` | Today's Daily Picks from Roon's Home, with why |
+| `roon_new_for_you` | New releases Roon picked for you |
+| `roon_mixes` | Today's Daily Mixes |
+| `roon_playlists`, `roon_playlist` | Your playlists, and one playlist's tracks |
+| `roon_favorites` | Albums with a heart in Roon, or your Qobuz favourites |
+| `roon_listen_later` | Your Listen Later list |
+| `roon_versions` | Other versions of an album: remasters, hi-res, in your library and at Qobuz |
+| `roon_similar` | More like this, for an album or an artist |
+| `roon_signal_path` | Roon's signal path for what plays: is it bit-perfect, what happens on the way |
+| `roon_dsp` | MUSE: the DSP set up for a zone |
 
 **Playing** — only on your request:
 
@@ -50,6 +64,18 @@ Version 0.1 (in progress). Library, playlists, Focus, Home (Daily Picks, mixes) 
 | `roon_group`, `roon_ungroup` | Group zones, and undo it |
 | `roon_sleep` | A sleep timer |
 | `roon_standby` | Put a device in standby, or wake it |
+| `roon_play_playlist` | A playlist on a zone, optionally shuffled |
+| `roon_play_mix` | One of today's Daily Mixes |
+
+**Changing your library or sound** — only on your request; each one reads the result back and says if Roon didn't follow:
+
+| Tool | What it does |
+|---|---|
+| `roon_favorite` | A heart on an album or track, or off |
+| `roon_listen_later_set` | On or off the Listen Later list |
+| `roon_library_add` | A Qobuz album into your library |
+| `roon_playlist_create` | A new playlist from tracks |
+| `roon_dsp_set` | MUSE on or off, one part on or off, or a preset |
 
 ## Install
 

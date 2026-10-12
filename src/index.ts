@@ -7,6 +7,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { registerReadTools } from './tools/read';
 import { registerControlTools } from './tools/control';
+import { registerLibraryTools } from './tools/library';
 import { findTarget, shutdown } from './core/session';
 import { log } from './core/log';
 import { version } from '../package.json';
@@ -21,6 +22,7 @@ async function main(): Promise<void> {
   const server = new McpServer({ name: 'deep-roon-mcp', title: 'Deep Roon MCP', version, websiteUrl: 'https://github.com/renebouwmeester/deep-roon-mcp' }, { instructions: INSTRUCTIONS });
   registerReadTools(server);
   registerControlTools(server);
+  registerLibraryTools(server);
   await server.connect(new StdioServerTransport());
   log(`${version} ready (stdio)`);
   // Find the Core and connect the extension right away, so Deep Roon MCP shows up in Roon's Settings → Extensions.

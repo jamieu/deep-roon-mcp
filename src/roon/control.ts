@@ -14,11 +14,11 @@ import { findZone } from './zones';
 
 export type How = 'now' | 'next' | 'queue';
 // PlayPriority: Now = 0, Interrupt = 1, PlayBefore = 2, Next = 3, Queue = 4.
-const PRIORITY: Record<How, number> = { now: 0, next: 3, queue: 4 };
+export const PRIORITY: Record<How, number> = { now: 0, next: 3, queue: 4 };
 
 /** PlayParameters: the priority, and Shuffle — Roon's own Shuffle button on an album or playlist (the queue starts
  *  shuffled; shuffling after loading would play track 1 first). */
-function playParams(c: C, p: number, shuffle = false): Buffer {
+export function playParams(c: C, p: number, shuffle = false): Buffer {
   const members = [];
   if (p !== 0) members.push({ name: 'Priority', propType: 9, value: new BinaryWriter().flexInt(p).toBuffer() });
   if (shuffle) members.push({ name: 'Shuffle', propType: 2, value: new BinaryWriter().boolean(true).toBuffer() });
@@ -39,7 +39,7 @@ function playTrack(c: C, zone: bigint, track: bigint, p: number) {
 
 /** After "now": does it sound? Roon says ok once the queue stands; whether the stream comes shows a moment later (a
  *  Qobuz track that gives no data; a device waking from standby takes a few seconds). Look every second, up to 12 s. */
-async function started(zoneName: string, p: number): Promise<{ started?: boolean; state?: string }> {
+export async function started(zoneName: string, p: number): Promise<{ started?: boolean; state?: string }> {
   if (p !== 0) return {};
   const t0 = Date.now();
   let state: string | undefined;
@@ -179,7 +179,7 @@ export async function queueClear(zoneName: string, everything: boolean) {
 }
 
 // ---- grouping and transfer ----
-const outputsOf = (c: C, zone: bigint) => c.graph.findByType('Endpoint').filter((e) => { const z = field(e, 'Zone'); return isRef(z) && String(z.$ref) === String(zone) && typeof field(e, 'Name') === 'string'; });
+export const outputsOf = (c: C, zone: bigint) => c.graph.findByType('Endpoint').filter((e) => { const z = field(e, 'Zone'); return isRef(z) && String(z.$ref) === String(zone) && typeof field(e, 'Name') === 'string'; });
 
 /** Transport::LinkEndpoints(Zone, IEnumerable<Endpoint>): the main zone keeps its music; the list is its own outputs
  *  plus the ones joining. Roon only groups outputs of the same kind (LinkCandidates). */

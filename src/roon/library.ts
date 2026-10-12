@@ -98,7 +98,7 @@ export async function findTracks(c: C, keys: string[]): Promise<Any[]> {
 }
 
 /** The full album (Library::GetAlbum, also for a Qobuz album outside the library), or null. */
-async function fullAlbum(c: C, al: Any): Promise<Any> {
+export async function fullAlbum(c: C, al: Any): Promise<Any> {
   const res = await short(c.call('Library', 'GetAlbum', [{ type: 'AlbumBase', name: 'album' }, { type: 'ResultCallback<Album>', name: 'cb_result' }], buildArgs([Arg.ref(al.oid)]), library(c)), 6000);
   return res?.success && res.payload.length ? c.graph.decodeReturnValue(Uint8Array.from(res.payload)) : null;
 }
@@ -174,8 +174,8 @@ export async function album(key: string, withCredits: boolean) {
 // Library::GetLocalizedEntityText(Sooid? external id, long own id, kind, sources) → LocalizedDescriptionContainer.Blobs.
 // The kinds ("review", "biography") and sources ("Rovi-albums:en", "Rovi-artists:en", "Wikipedia:en") are the ones Roon's
 // own app asks for; without the external id the Core says InvalidArgument.
-interface Blob { source: string; author?: string; url?: string; text: string }
-async function entityText(c: C, external: Any, id: Any, kind: string, sources: string[]): Promise<Blob[]> {
+export interface Blob { source: string; author?: string; url?: string; text: string }
+export async function entityText(c: C, external: Any, id: Any, kind: string, sources: string[]): Promise<Blob[]> {
   if (!Buffer.isBuffer(external)) return [];
   const args = Buffer.concat([new BinaryWriter().optionalSooid(external).toBuffer(), buildArgs([Arg.long(BigInt(id)), Arg.str(kind), Arg.collection(sources.map((s) => buildArgs([Arg.str(s)])))])]);
   const res = await short(c.call('Library', 'GetLocalizedEntityText',
@@ -192,7 +192,7 @@ const cut = (b: Blob, max: number) => {
   return r;
 };
 /** Roon's own text (TiVo) first; Wikipedia when asked, or when there's nothing else. In full, unless a limit is asked. */
-const choose = (blobs: Blob[], max: number, wiki: boolean) => {
+export const choose = (blobs: Blob[], max: number, wiki: boolean) => {
   const own = blobs.filter((b) => b.source !== 'Wikipedia'), w = blobs.filter((b) => b.source === 'Wikipedia');
   return [...own, ...(wiki || !own.length ? w : [])].map((b) => cut(b, max));
 };
@@ -207,7 +207,7 @@ export async function review(key: string, max: number, wiki: boolean) {
   });
 }
 
-async function performer(c: C, key: string): Promise<Any> {
+export async function performer(c: C, key: string): Promise<Any> {
   if (!/^\d+$/.test(key)) throw new RoonError('An artist key is a number', 'invalid');
   // The light artist by number first, then the full one by reference: GetPerformer(long) doesn't know an artist outside
   // the library (measured: The Kinks → refused at once).
