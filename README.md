@@ -179,6 +179,8 @@ status; it holds no secrets).
 
 - Short connections, as Roon Labs asked: opened for a question, closed after two minutes of quiet, one at a time, questions
   one after another; a PING every 10 s while open, so the Core doesn't drop the session.
+- Several clients at once (Claude Desktop and Claude Code, or ChatGPT next to them) work: Roon keeps one connection
+  per extension, and the client that asks a question takes it over for that moment.
 - Album, track and artist keys stay valid between calls.
 - The log goes to stderr (your MCP client keeps it).
 - At the start it asks GitHub once whether a newer release is out (`DEEP_ROON_NO_UPDATE_CHECK=1` turns that off). Nothing

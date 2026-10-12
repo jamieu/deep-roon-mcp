@@ -4,6 +4,12 @@
 // (state, volume) and changing the volume.
 //
 // The pairing token stays in the user's own configuration folder (pairing.json, readable only by the user).
+//
+// Roon keeps one connection per extension: a second copy of Deep Roon MCP (Claude Desktop's chat and a Claude Code
+// session, or another client) takes it over and the first is removed (RoonServer_log: "removing [apiclient …]"). Two
+// copies that reconnect by themselves then push each other out for ever — measured 12 Oct 2026, every 5, 15, 60, 300 s,
+// and a question that came in between was told to enable the extension. So after a close there is no reconnect of its
+// own: the connection opens again when a tool needs it, and whoever asks has it.
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -37,12 +43,17 @@ let started = false;
 let waiting: (() => void)[] = [];
 let zonesIn = false;                  // the first "Subscribed" came in
 let zoneWaiting: (() => void)[] = [];
+let roon: any = null;                 // eslint-disable-line @typescript-eslint/no-explicit-any
+let core: Target | null = null;
+let open = false;                     // a websocket to the Core is open (or opening)
 
-/** Connects to the Core's extension API and keeps the connection (back off 5 s, 15 s, 60 s, then every 5 minutes). */
+/** Connects to the Core's extension API once at the start (so Deep Roon MCP shows up in Roon to be enabled); later
+ *  only on demand (paired()). */
 export function startOfficial(target: Target): void {
   if (started) return;
   started = true;
-  const roon = new RoonApi({
+  core = target;
+  roon = new RoonApi({
     extension_id: 'nl.renebouwmeester.deep-roon-mcp',
     display_name: 'Deep Roon MCP',
     display_version: version,
@@ -73,23 +84,24 @@ export function startOfficial(target: Target): void {
     core_unpaired() { transport = null; zones.clear(); zonesIn = false; log('unpaired from the Core'); },
   });
   roon.init_services({ required_services: [RoonApiTransport] });
-  let tries = 0;
-  const connect = () => {
-    roon.ws_connect({
-      host: target.host, port: target.port,
-      onclose: () => {
-        transport = null; zones.clear(); zonesIn = false;
-        const delay = [5, 15, 60][tries] ?? 300; tries += 1;
-        setTimeout(connect, delay * 1000).unref();
-      },
-    });
-  };
   connect();
+}
+function connect(): void {
+  if (open || !roon || !core) return;
+  open = true;
+  roon.ws_connect({
+    host: core.host, port: core.port,
+    onclose: () => {
+      open = false; transport = null; zones.clear(); zonesIn = false;
+      log('the extension connection closed (another copy of Deep Roon MCP may have taken it over) — it opens again when a tool needs it');
+    },
+  });
 }
 
 /** The paired transport, waiting up to `ms` for it — else what the user has to do. */
 export async function paired(ms = 8000): Promise<any> { // eslint-disable-line @typescript-eslint/no-explicit-any
   if (transport) return transport;
+  connect();
   await new Promise<void>((resolve) => { waiting.push(resolve); setTimeout(resolve, ms).unref(); });
   if (transport) return transport;
   throw new RoonError('Deep Roon MCP isn\'t enabled in Roon yet: open Roon › Settings › Extensions and click Enable next to "Deep Roon MCP" — once.', 'unavailable');
