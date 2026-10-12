@@ -133,7 +133,8 @@ export function albumRow(c: C, o: Any): AlbumRow {
   if (flag(field(o, 'IsFavorite'))) r.favorite = true;
   if (flag(field(o, 'IsListenLater'))) r.listen_later = true;
   const p = field(o, 'Popularity'); if (typeof p === 'number') r.popularity = Math.round(p * 100) / 100;
-  // The cover's image key (12 Oct 2026, for clients that draw: the Core serves it on http://<core>:9330/api/image/<key>).
+  // The cover's image key (12 Oct 2026, for clients that draw): the Core serves these graph keys at
+  // http://<core>:9330/image/<key>.jpg, or scaled at /image/<key>.<px>.jpg (measured: .300.jpg → 300 px, 32 kB).
   const img = imageKey(c, o); if (img) r.image = img;
   return r;
 }

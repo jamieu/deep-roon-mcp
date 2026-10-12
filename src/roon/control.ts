@@ -8,7 +8,7 @@ import { formatMethodSignature } from '../intern/catalog/signature';
 import { withCore, findTarget, RoonError } from '../core/session';
 import { officialZone } from '../core/official';
 import { log } from '../core/log';
-import { Any, C, clean, duration, field, items, obj, short, wait } from './graph';
+import { Any, C, clean, duration, field, imageKey, items, obj, short, wait } from './graph';
 import { findAlbum, findTracks } from './library';
 import { findZone } from './zones';
 
@@ -185,6 +185,8 @@ function queueRow(c: C, oid: bigint): Any {
   const r: Any = { title: field(tr, 'Title') ?? null, artist: clean(field(al, 'PerformedBy') ?? '') };
   const album = field(al, 'Title'); if (album) r.album = album;
   const l = field(tr, 'LengthSeconds'); if (typeof l === 'number') r.length = duration(l);
+  const k = field(tr, 'TrackId'); if (k !== undefined && k !== null) r.key = String(k);
+  const img = imageKey(c, al) ?? imageKey(c, tr); if (img) r.image = img;
   return r;
 }
 export async function queue(zoneName: string, limit: number) {
