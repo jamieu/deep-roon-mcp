@@ -1,0 +1,10 @@
+Deep Roon MCP
+Copyright 2026 René Bouwmeester
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+It includes the core of roon-api-reverse-engineering by Arthur Soares (MIT License, see src/intern/LICENSE), with the
+changes listed in src/intern/README.md. The bundle in dist/ also includes the MCP TypeScript SDK (MIT), zod (MIT) and
+ws (MIT).
+
+Deep Roon MCP is not made, endorsed or supported by Roon Labs.

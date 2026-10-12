@@ -1,0 +1,49 @@
+{
+  "name": "deep-roon-mcp",
+  "version": "0.1.0",
+  "description": "An MCP server for Roon that reaches the parts the official API doesn't: reviews, biographies, Qobuz's shelves, your history, search across your library and Qobuz",
+  "license": "Apache-2.0",
+  "author": "René Bouwmeester",
+  "homepage": "https://github.com/renebouwmeester/deep-roon-mcp",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/renebouwmeester/deep-roon-mcp.git"
+  },
+  "keywords": [
+    "roon",
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "qobuz",
+    "music"
+  ],
+  "type": "commonjs",
+  "bin": {
+    "deep-roon-mcp": "dist/deep-roon-mcp.js"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "build": "node scripts/build.mjs",
+    "start": "node dist/deep-roon-mcp.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "ws": "^8.22.0",
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/ws": "^8.18.2",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}
