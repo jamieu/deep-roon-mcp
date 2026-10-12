@@ -181,11 +181,19 @@ export async function libraryAdd(key: string) {
   return withCore(async (c) => {
     const album = await findAlbum(c, key);
     c.remoting.callMethodNoReply(c.serviceOid('Library'), formatMethodSignature('Library', 'AddToLibrary', [{ type: 'AlbumBase', name: 'album' }]), buildArgs([Arg.ref(album.oid)]));
-    await wait(1500);
-    const after = await reread(c, 'album', String(field(album, 'AlbumId')));
-    const inLibrary = after ? field(after, 'Source') === 1 : undefined;
-    return { ok: true, title: field(album, 'Title'), artist: clean(field(album, 'PerformedBy')), in_library: inLibrary,
-             note: inLibrary ? undefined : 'Sent to Roon; Roon may take a moment to import it — check with roon_search in a minute.' };
+    // The library copy is a new album with its own key, a few seconds later (12 Oct: in after ~10 s, key 4280264 → 223535).
+    // Look for it by title and artist for up to 15 s.
+    const title = String(field(album, 'Title') ?? ''), artist = clean(field(album, 'PerformedBy')).toLowerCase();
+    let copy: Any = null;
+    const end = Date.now() + 15000;
+    while (!copy && Date.now() < end) {
+      await wait(1500);
+      const hits = await c.search(title, 20, false).catch(() => []);
+      copy = hits.find((o) => /\.Album(Lite)?$/.test(o.typeName) && field(o, 'Source') === 1 && field(o, 'Title') === title
+        && (clean(field(o, 'PerformedBy')).toLowerCase().includes(artist.split(/\s+(with|&|and)\s+/)[0]) || artist.includes(clean(field(o, 'PerformedBy')).toLowerCase())));
+    }
+    return { ok: true, title, artist: clean(field(album, 'PerformedBy')), in_library: !!copy, library_key: copy ? String(field(copy, 'AlbumId')) : undefined,
+             note: copy ? undefined : 'Sent to Roon; it isn\'t in the library yet — Roon may still be importing it. Check with roon_search in a minute.' };
   });
 }
 
