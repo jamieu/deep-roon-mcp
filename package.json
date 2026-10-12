@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "An MCP server for Roon that reaches the parts the official API doesn't: reviews, biographies, Qobuz's shelves, your history, search across your library and Qobuz",
   "license": "Apache-2.0",
-  "author": "René Bouwmeester",
+  "author": "René Bouwmeester <21277119+renebouwmeester@users.noreply.github.com>",
   "homepage": "https://github.com/renebouwmeester/deep-roon-mcp",
   "repository": {
     "type": "git",
