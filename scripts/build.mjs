@@ -12,5 +12,7 @@ await build({
   banner: { js: '#!/usr/bin/env node' },
   legalComments: 'linked',
   logLevel: 'warning',
+  // Roon's node-roon-api finds a service by its class name (core.services.RoonApiTransport): keep the names as they are.
+  keepNames: true,
 });
 console.log('dist/deep-roon-mcp.js');

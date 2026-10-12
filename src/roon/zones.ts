@@ -1,6 +1,7 @@
 // Roon's zones as the internal protocol knows them, and what plays in each.
 import { isRef } from '../intern';
 import { withCore, RoonError } from '../core/session';
+import { officialZone } from '../core/official';
 import { Any, C, clean, dotnetDate, duration, field, items, localTime, obj } from './graph';
 
 /** The outputs there are now: per name only the current one. A Squeezebox player that reconnects leaves its old output
@@ -57,6 +58,10 @@ export async function nowPlaying() {
     // Only zones with an output: after a transfer the old zone objects stay in the graph.
     const out = c.graph.findByType('Zone').filter((z) => names.has(String(z.oid))).map((z) => {
       const r: Any = { zone: names.get(String(z.oid)), state: STATE[field(z, 'State') ?? 0] ?? String(field(z, 'State')) };
+      // The volume, from the official API (the internal graph doesn't carry it).
+      const off = officialZone(r.zone);
+      const v = off?.outputs.find((o) => o.volume)?.volume;
+      if (v) { r.volume = v.value; r.volume_max = v.max; if (v.is_muted) r.muted = true; }
       if (field(z, 'Shuffle') === true) r.shuffle = true;
       const loop = REPEAT[field(z, 'Loop') ?? 0]; if (loop) r.repeat = loop;
       if (field(z, 'AutoSwim') === true) r.roon_radio = true;
@@ -70,8 +75,11 @@ export async function nowPlaying() {
         const f = field(tr, 'Format'); if (f) r.format = f;
         const l = field(tr, 'LengthSeconds'); if (typeof l === 'number') r.length = duration(l);
       } else {
-        // A stream through Roon's audio input (another app feeding Roon) or a radio station: no track in the graph.
-        r.line = 'a stream Roon receives from elsewhere (no track details)';
+        // A stream through Roon's audio input (another app feeding Roon) or a radio station: no track in the graph, but
+        // the official API has the lines Roon shows.
+        const lines = off?.now_playing?.three_line;
+        if (lines?.line1) { r.title = lines.line1; if (lines.line2) r.artist = lines.line2; if (lines.line3) r.album = lines.line3; r.source = 'a stream into Roon (audio input or radio)'; }
+        else r.line = 'a stream Roon receives from elsewhere (no track details)';
       }
       const pos = field(z, 'SeekPosition'); if (typeof pos === 'number') r.position = duration(pos);
       const left = field(obj(c, field(z, 'Queue')), 'TrackCountRemaining'); if (typeof left === 'number') r.tracks_left_in_queue = left;

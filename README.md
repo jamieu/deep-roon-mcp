@@ -15,8 +15,9 @@ server of its own and sends nothing anywhere else. What you ask goes to your MCP
 
 ## Status
 
-Version 0.1 — read-only: nothing it does changes anything in Roon. Playback, queues, playlists, Focus, Home (Daily Picks,
-mixes) and DSP follow.
+Version 0.1 (in progress). Library, playlists, Focus, Home (Daily Picks, mixes) and DSP follow.
+
+**Reading** — changes nothing in Roon:
 
 | Tool | What it does |
 |---|---|
@@ -28,9 +29,27 @@ mixes) and DSP follow.
 | `roon_bio` | The biography Roon shows, in full, with related artists |
 | `roon_artist` | An artist's discography, oldest first |
 | `roon_zones` | Roon's zones and groups |
-| `roon_now_playing` | What plays in each zone |
+| `roon_now_playing` | What plays in each zone, with the volume |
+| `roon_queue` | A zone's queue |
+| `roon_cover` | The cover of what plays, as an image |
 | `roon_history` | Roon's play history, newest first |
 | `roon_top` | Most played albums, artists or tracks over your whole history |
+
+**Playing** — only on your request:
+
+| Tool | What it does |
+|---|---|
+| `roon_play` | An album on a zone: now, next or at the end of the queue, optionally shuffled |
+| `roon_play_tracks` | Your own running order of tracks |
+| `roon_control` | Pause, play, stop, next, previous |
+| `roon_seek` | A position in the playing track |
+| `roon_volume` | A zone's volume, mute |
+| `roon_settings` | Shuffle, repeat, Roon Radio |
+| `roon_queue_clear` | Clear what comes after the playing track (or everything) |
+| `roon_transfer` | Move what plays, with its queue, to another zone |
+| `roon_group`, `roon_ungroup` | Group zones, and undo it |
+| `roon_sleep` | A sleep timer |
+| `roon_standby` | Put a device in standby, or wake it |
 
 ## Install
 
@@ -51,6 +70,9 @@ npm install -g deep-roon-mcp        # not published yet — for now: build from 
   }
 }
 ```
+
+**Once, in Roon:** Settings › Extensions › Enable next to "Deep Roon MCP". Until then the tools say so. The pairing is kept
+in your own configuration folder (on a Mac `~/Library/Application Support/deep-roon-mcp`).
 
 Deep Roon MCP finds the Core on your network by itself. When it can't — another subnet, a VPN such as Tailscale — set
 `ROON_HOST` to the Core's address (`"env": { "ROON_HOST": "192.168.1.20" }` in the configuration above). Over a VPN, only

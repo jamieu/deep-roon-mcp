@@ -1,0 +1,277 @@
+// Playing and controlling: albums and tracks on a zone, the transport buttons, seek, shuffle / repeat / Roon Radio, the
+// queue, grouping, transfer, the sleep timer, standby, and the cover. These change what plays — the tools say so.
+import { isRef } from '../intern';
+import { Arg, buildArgs } from '../intern/proto/serializer';
+import { BinaryReader } from '../intern/proto/reader';
+import { BinaryWriter } from '../intern/proto/writer';
+import { formatMethodSignature } from '../intern/catalog/signature';
+import { withCore, findTarget, RoonError } from '../core/session';
+import { officialZone } from '../core/official';
+import { log } from '../core/log';
+import { Any, C, clean, duration, field, items, obj, short, wait } from './graph';
+import { findAlbum, findTracks } from './library';
+import { findZone } from './zones';
+
+export type How = 'now' | 'next' | 'queue';
+// PlayPriority: Now = 0, Interrupt = 1, PlayBefore = 2, Next = 3, Queue = 4.
+const PRIORITY: Record<How, number> = { now: 0, next: 3, queue: 4 };
+
+/** PlayParameters: the priority, and Shuffle — Roon's own Shuffle button on an album or playlist (the queue starts
+ *  shuffled; shuffling after loading would play track 1 first). */
+function playParams(c: C, p: number, shuffle = false): Buffer {
+  const members = [];
+  if (p !== 0) members.push({ name: 'Priority', propType: 9, value: new BinaryWriter().flexInt(p).toBuffer() });
+  if (shuffle) members.push({ name: 'Shuffle', propType: 2, value: new BinaryWriter().boolean(true).toBuffer() });
+  return c.structArg('Sooloos.Broker.Api.PlayParameters', members);
+}
+function playAlbum(c: C, zone: bigint, album: bigint, p: number, shuffle: boolean) {
+  const args = Buffer.concat([buildArgs([Arg.ref(zone), Arg.sooid(c.profile())]), playParams(c, p, shuffle), buildArgs([Arg.ref(album), Arg.bool(false), Arg.bool(false)])]);
+  return c.call('Transport', 'PlayAlbum',
+    [{ type: 'Zone', name: 'zone' }, { type: 'Sooid', name: 'profileid' }, { type: 'PlayParameters', name: 'parameters' }, { type: 'AlbumBase', name: 'album' },
+     { type: 'bool', name: 'favoritesonly' }, { type: 'bool', name: 'includehidden' }, { type: 'ResultCallback<PlayFeedback>', name: 'cb' }], args, c.serviceOid('Transport'));
+}
+function playTrack(c: C, zone: bigint, track: bigint, p: number) {
+  const args = Buffer.concat([buildArgs([Arg.ref(zone), Arg.sooid(c.profile())]), playParams(c, p), buildArgs([Arg.ref(track)])]);
+  return c.call('Transport', 'PlayTrack',
+    [{ type: 'Zone', name: 'zone' }, { type: 'Sooid', name: 'profileid' }, { type: 'PlayParameters', name: 'parameters' }, { type: 'TrackBase', name: 'track' },
+     { type: 'ResultCallback<PlayFeedback>', name: 'cb' }], args, c.serviceOid('Transport'));
+}
+
+/** After "now": does it sound? Roon says ok once the queue stands; whether the stream comes shows a moment later (a
+ *  Qobuz track that gives no data; a device waking from standby takes a few seconds). Look every second, up to 12 s. */
+async function started(zoneName: string, p: number): Promise<{ started?: boolean; state?: string }> {
+  if (p !== 0) return {};
+  const t0 = Date.now();
+  let state: string | undefined;
+  while (Date.now() - t0 < 12000) {
+    await wait(1000);
+    const z = officialZone(zoneName);
+    if (!z) return {};
+    state = z.state;
+    if (state === 'playing' || state === 'loading') return { started: true };
+  }
+  log(`not started: ${zoneName} is ${state} ${Math.round((Date.now() - t0) / 1000)} s after the start`);
+  return { started: false, state };
+}
+
+export async function play(key: string, zoneName: string, how: How, shuffle: boolean) {
+  const p = PRIORITY[how];
+  const r = await withCore(async (c) => {
+    const z = findZone(c, zoneName);
+    const album = await findAlbum(c, key);
+    const res = await playAlbum(c, z.oid, album.oid, p, shuffle);
+    log(`play (${how}${shuffle ? ', shuffled' : ''}): ${field(album, 'Title')} on ${z.name} → ${res.success ? 'ok' : res.status}`);
+    if (!res.success) throw new RoonError(`Roon refused to play it (${res.status})`);
+    return { zone: z.name, how, shuffle: shuffle || undefined, title: field(album, 'Title'), artist: clean(field(album, 'PerformedBy')) };
+  });
+  return { ok: true, ...r, ...(await started(r.zone, p)) };
+}
+
+/** A list of tracks, in order: each one with PlayTrack — "now" = the first now and the rest at the end of the queue;
+ *  "queue" = all at the end; "next" = in reverse as next, so the first of the list also plays first. */
+export async function playTracks(keys: string[], zoneName: string, how: How) {
+  const p = PRIORITY[how];
+  const r = await withCore(async (c) => {
+    const z = findZone(c, zoneName);
+    const tracks = await findTracks(c, keys);
+    const order = p === 3 ? [...tracks].reverse() : tracks;
+    let done = 0;
+    for (let i = 0; i < order.length; i++) {
+      const res = await playTrack(c, z.oid, order[i].oid, p === 0 ? (i === 0 ? 0 : 4) : p);
+      if (!res.success) throw new RoonError(`Roon refused track ${i + 1} of ${order.length} (${res.status}); ${done} were queued`);
+      done += 1;
+    }
+    log(`play_tracks (${how}): ${done} tracks on ${z.name}`);
+    return { zone: z.name, how, count: done, titles: tracks.map((t) => field(t, 'Title')) };
+  });
+  return { ok: true, ...r, ...(await started(r.zone, p)) };
+}
+
+const BUTTONS: Record<string, 'Pause' | 'Play' | 'PlayPause' | 'Stop' | 'Next' | 'Previous'> =
+  { pause: 'Pause', play: 'Play', playpause: 'PlayPause', stop: 'Stop', next: 'Next', previous: 'Previous' };
+export async function control(zoneName: string, action: string) {
+  const m = BUTTONS[action];
+  if (!m) throw new RoonError(`Unknown action; choose from ${Object.keys(BUTTONS).join(', ')}`, 'invalid');
+  return withCore(async (c) => {
+    const z = findZone(c, zoneName);
+    c.zoneControl(z.oid, m);   // no answer: Roon carries it out or not
+    log(`control: ${m} on ${z.name}`);
+    return { ok: true, zone: z.name, action };
+  });
+}
+
+export async function seek(zoneName: string, seconds: number) {
+  return withCore(async (c) => {
+    const z = findZone(c, zoneName);
+    const res = await c.call('Zone', 'Seek', [{ type: 'int', name: 'seconds' }, { type: 'ResultCallback', name: 'cb_done' }], buildArgs([Arg.int(Math.max(0, Math.round(seconds)))]), z.oid);
+    if (!res.success) throw new RoonError(`Roon refused to seek (${res.status})`);
+    return { ok: true, zone: z.name, position: duration(seconds) };
+  });
+}
+
+/** Shuffle, repeat and Roon Radio for the queue that's there (Zone::SetShuffle, SetLoop, SetAutoSwim, AutoSwimNow). */
+export async function settings(zoneName: string, s: { shuffle?: boolean; repeat?: 'off' | 'all' | 'one'; roon_radio?: boolean | 'now' }) {
+  return withCore(async (c) => {
+    const z = findZone(c, zoneName);
+    const send = (method: string, params: { type: string; name: string }[], args: Buffer) => c.remoting.callMethodNoReply(z.oid, formatMethodSignature('Zone', method, params), args);
+    const done: Any = {};
+    if (s.shuffle !== undefined) { send('SetShuffle', [{ type: 'bool', name: 'shuffle' }], buildArgs([Arg.bool(s.shuffle)])); done.shuffle = s.shuffle; }
+    if (s.repeat !== undefined) { send('SetLoop', [{ type: 'LoopMode', name: 'loop' }], buildArgs([Arg.enum_({ off: 0, all: 1, one: 2 }[s.repeat])])); done.repeat = s.repeat; }
+    if (s.roon_radio === 'now') { send('AutoSwimNow', [], Buffer.alloc(0)); done.roon_radio = 'now'; }
+    else if (s.roon_radio !== undefined) { send('SetAutoSwim', [{ type: 'bool', name: 'autoswim' }], buildArgs([Arg.bool(s.roon_radio)])); done.roon_radio = s.roon_radio; }
+    if (!Object.keys(done).length) throw new RoonError('Nothing to set: give shuffle, repeat or roon_radio', 'invalid');
+    log(`settings: ${z.name} ← ${JSON.stringify(done)}`);
+    return { ok: true, zone: z.name, ...done };
+  });
+}
+
+// ---- the queue ----
+function queueOf(c: C, zoneName: string) {
+  const z = findZone(c, zoneName);
+  const q = obj(c, field(c.graph.getObject(z.oid), 'Queue'));
+  if (!q) throw new RoonError(`${z.name} has no queue`, 'invalid');
+  return { z, q };
+}
+/** Queue::GetItems gives the whole queue (also what has played) as references; the needle is CurrentItemIndex. */
+async function queueItems(c: C, q: Any): Promise<bigint[]> {
+  const res = await c.call('Queue', 'GetItems', [{ type: 'ResultCallback<IList<TransportItem>>', name: 'cb_result' }], Buffer.alloc(0), q.oid);
+  if (!res.success) throw new RoonError(`Roon refused the queue (${res.status})`);
+  if (res.payload.length < 2) return [];
+  const r = new BinaryReader(Uint8Array.from(res.payload));
+  r.integer(); const n = r.flexInt(); const refs: bigint[] = [];
+  for (let i = 0; i < n && r.remaining > 0; i++) refs.push(r.flexLong());
+  return refs;
+}
+function queueRow(c: C, oid: bigint): Any {
+  const tr = obj(c, field(items(c, field(c.graph.getObject(oid), 'Tracks'))[0], 'Track'));
+  const al = obj(c, field(tr, 'Album'));
+  const r: Any = { title: field(tr, 'Title') ?? null, artist: clean(field(al, 'PerformedBy') ?? '') };
+  const album = field(al, 'Title'); if (album) r.album = album;
+  const l = field(tr, 'LengthSeconds'); if (typeof l === 'number') r.length = duration(l);
+  return r;
+}
+export async function queue(zoneName: string, limit: number) {
+  return withCore(async (c) => {
+    const { z, q } = queueOf(c, zoneName);
+    const refs = await queueItems(c, q);
+    const at = Math.max(0, field(c.graph.getObject(q.oid), 'CurrentItemIndex') ?? 0);
+    const view = refs.slice(at, at + Math.min(Math.max(1, limit), 200));
+    const end = Date.now() + 2500;   // the items arrive after the answer
+    while (Date.now() < end && view.some((oid) => queueRow(c, oid).title === null)) await wait(50);
+    return { zone: z.name, left: Math.max(0, refs.length - at), rows: view.map((oid, i) => ({ n: i + 1, now: i === 0 || undefined, ...queueRow(c, oid) })) };
+  });
+}
+/** Clears what comes after the playing track (Queue::RemoveItems); `everything` clears the whole queue (RemoveAll). */
+export async function queueClear(zoneName: string, everything: boolean) {
+  return withCore(async (c) => {
+    const { z, q } = queueOf(c, zoneName);
+    if (everything) {
+      c.remoting.callMethodNoReply(q.oid, 'Sooloos.Broker.Api.Queue::RemoveAll()', Buffer.alloc(0));
+      return { ok: true, zone: z.name, removed: 'everything' };
+    }
+    const refs = await queueItems(c, q);
+    const at = Math.max(0, field(c.graph.getObject(q.oid), 'CurrentItemIndex') ?? 0);
+    const after = refs.slice(at + 1);
+    if (after.length) c.remoting.callMethodNoReply(q.oid, 'Sooloos.Broker.Api.Queue::RemoveItems(System.Collections.Generic.IEnumerable<Sooloos.Broker.Api.TransportItem>)',
+      buildArgs([Arg.collection(after.map((oid) => buildArgs([Arg.ref(oid)])))]));
+    return { ok: true, zone: z.name, removed: after.length };
+  });
+}
+
+// ---- grouping and transfer ----
+const outputsOf = (c: C, zone: bigint) => c.graph.findByType('Endpoint').filter((e) => { const z = field(e, 'Zone'); return isRef(z) && String(z.$ref) === String(zone) && typeof field(e, 'Name') === 'string'; });
+
+/** Transport::LinkEndpoints(Zone, IEnumerable<Endpoint>): the main zone keeps its music; the list is its own outputs
+ *  plus the ones joining. Roon only groups outputs of the same kind (LinkCandidates). */
+export async function group(main: string, join: string[]) {
+  return withCore(async (c) => {
+    const h = findZone(c, main);
+    const own = outputsOf(c, h.oid);
+    const added: Any[] = [];
+    for (const n of join) { const z = findZone(c, n); if (z.oid === h.oid) continue; for (const e of outputsOf(c, z.oid)) if (!added.some((x) => x.oid === e.oid)) added.push(e); }
+    if (!added.length) throw new RoonError('Nothing to group: name at least one other zone', 'invalid');
+    for (const e of added) {
+      const can = (obj(c, field(own[0], 'LinkCandidates'))?.fields?.$items ?? []).some((x: Any) => isRef(x) && String(x.$ref) === String(e.oid));
+      if (!can) throw new RoonError(`${field(e, 'Name')} can't be grouped with ${h.name} (Roon groups only outputs of the same kind)`, 'invalid');
+    }
+    const res = await c.call('Transport', 'LinkEndpoints', [{ type: 'Zone', name: 'zone' }, { type: 'IEnumerable<Endpoint>', name: 'endpoints' }, { type: 'ResultCallback', name: 'cb_result' }],
+      buildArgs([Arg.ref(h.oid), Arg.collection([...own, ...added].map((e) => buildArgs([Arg.ref(e.oid)])))]), c.serviceOid('Transport'));
+    if (!res.success) throw new RoonError(`Roon refused to group (${res.status})`);
+    return { ok: true, group: [...own, ...added].map((e) => field(e, 'Name')) };
+  });
+}
+export async function ungroup(zoneName: string, only?: string) {
+  return withCore(async (c) => {
+    const z = findZone(c, zoneName);
+    const all = outputsOf(c, z.oid);
+    if (all.length < 2) throw new RoonError(`${z.name} isn't in a group`, 'invalid');
+    const off = only ? all.filter((e) => String(field(e, 'Name')).toLowerCase().includes(only.toLowerCase())) : all;
+    if (!off.length) throw new RoonError(`"${only}" isn't in this group (${all.map((e) => field(e, 'Name')).join(' + ')})`, 'not_found');
+    const res = await c.call('Transport', 'UnlinkEndpoints', [{ type: 'IEnumerable<Endpoint>', name: 'endpoints' }, { type: 'ResultCallback', name: 'cb_result' }],
+      buildArgs([Arg.collection(off.map((e) => buildArgs([Arg.ref(e.oid)])))]), c.serviceOid('Transport'));
+    if (!res.success) throw new RoonError(`Roon refused to ungroup (${res.status})`);
+    return { ok: true, released: off.map((e) => field(e, 'Name')) };
+  });
+}
+/** What plays, with its queue, to another zone (Transport::Transfer — Roon's own "Transfer zone"). */
+export async function transfer(from: string, to: string) {
+  return withCore(async (c) => {
+    const a = findZone(c, from), b = findZone(c, to);
+    if (a.oid === b.oid) throw new RoonError('From and to are the same zone', 'invalid');
+    const res = await c.call('Transport', 'Transfer', [{ type: 'Zone', name: 'from' }, { type: 'Zone', name: 'to' }, { type: 'ResultCallback', name: 'cb_result' }],
+      buildArgs([Arg.ref(a.oid), Arg.ref(b.oid)]), c.serviceOid('Transport'));
+    if (!res.success) throw new RoonError(`Roon refused the transfer (${res.status})`);
+    return { ok: true, from: a.name, to: b.name };
+  });
+}
+
+// ---- sleep timer and standby ----
+export async function sleep(zoneName: string, minutes: number | null) {
+  return withCore(async (c) => {
+    const z = findZone(c, zoneName);
+    const on = minutes !== null;
+    const args = new BinaryWriter().optionalBoolean(on).boolean(on);
+    if (on) args.integer(minutes!);
+    const res = await c.call('Zone', 'SetSleepTimer', [{ type: 'bool?', name: 'is_enabled' }, { type: 'int?', name: 'duration_minutes' }, { type: 'ResultCallback', name: 'cb_result' }], args.toBuffer(), z.oid);
+    if (!res.success) throw new RoonError(`Roon refused the sleep timer (${res.status})`);
+    return { ok: true, zone: z.name, ...(on ? { minutes } : { off: true }) };
+  });
+}
+export async function standby(zoneName: string, on: boolean) {
+  return withCore(async (c) => {
+    const z = findZone(c, zoneName);
+    const outs = outputsOf(c, z.oid).filter((e) => field(e, 'SupportsStandby') === true);
+    if (!outs.length) throw new RoonError(`${z.name} has no standby`, 'invalid');
+    for (const e of outs) { if (on) c.standby(e.oid); else await short(c.powerOn(e.oid), 6000); }
+    return { ok: true, zone: z.name, standby: on };
+  });
+}
+
+// ---- the cover ----
+/** The cover of what plays in a zone, from the Core (GET :9330/api/image/<key>, no pairing needed). */
+export async function cover(zoneName?: string) {
+  const t = await findTarget();
+  const info = await withCore(async (c) => {
+    const pick = zoneName ? findZone(c, zoneName) : null;
+    const zones = c.graph.findByType('Zone');
+    const z = pick ? c.graph.getObject(pick.oid)
+      : zones.find((x) => (field(x, 'State') ?? 0) === 0 && items(c, field(obj(c, field(x, 'NowPlaying')), 'Tracks')).length)
+        ?? zones.find((x) => field(x, 'State') === 2 && items(c, field(obj(c, field(x, 'NowPlaying')), 'Tracks')).length);
+    if (!z) throw new RoonError(zoneName ? `Nothing plays on ${zoneName}` : 'Nothing plays in Roon right now', 'not_found');
+    const tr = obj(c, field(items(c, field(obj(c, field(z, 'NowPlaying')), 'Tracks'))[0], 'Track'));
+    const al = obj(c, field(tr, 'Album'));
+    const url = String(field(obj(c, field(al, 'Image')), 'Url') ?? field(obj(c, field(tr, 'Image')), 'Url') ?? '');
+    const key = /^broker:\/\/\/image\/([^.]+)\./.exec(url)?.[1];
+    return { key, title: field(tr, 'Title'), album: field(al, 'Title'), artist: clean(field(al, 'PerformedBy')), zone: pick?.name };
+  });
+  const off = zoneName ? officialZone(zoneName) : undefined;
+  const key = info.key ?? off?.now_playing?.image_key;
+  // A stream into Roon (audio input, radio): no track in the graph — the lines Roon shows instead.
+  const lines = off?.now_playing?.three_line;
+  if (!info.title && lines?.line1) { info.title = lines.line1; info.artist = lines.line2 ?? ''; info.album = lines.line3; }
+  if (!key) throw new RoonError('Roon has no cover for what plays', 'not_found');
+  const r = await fetch(`http://${t.host}:${t.port}/api/image/${key}?scale=fit&width=600&height=600`).catch(() => null);
+  if (!r?.ok) throw new RoonError('Roon doesn\'t hand over the cover right now', 'unavailable');
+  return { info: { zone: info.zone, title: info.title, album: info.album, artist: info.artist },
+           image: { data: Buffer.from(await r.arrayBuffer()).toString('base64'), mimeType: r.headers.get('content-type') ?? 'image/jpeg' } };
+}

@@ -22,3 +22,12 @@ export async function run(work: () => Promise<unknown>): Promise<CallToolResult>
     return { isError: true, content: [{ type: 'text', text }] };
   }
 }
+
+/** A tool whose answer is an image, with its details as text beside it (not every client shows images). */
+export async function runImage(work: () => Promise<{ info: unknown; image: { data: string; mimeType: string } }>): Promise<CallToolResult> {
+  let image: { data: string; mimeType: string } | null = null;
+  const r = await run(async () => { const x = await work(); image = x.image; return x.info; });
+  if (r.isError || !image) return r;
+  const { data, mimeType } = image as { data: string; mimeType: string };
+  return { content: [...r.content, { type: 'image', data, mimeType }] };
+}

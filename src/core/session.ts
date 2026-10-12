@@ -5,17 +5,15 @@
 // Objects are only valid within one connection; the ids (AlbumId, TrackId, PerformerId) aren't — an id from an earlier
 // connection is fetched from the Core again (see roon/library.ts).
 import { RoonClient } from '../intern';
-import { brokerId, coreInfo, findCores, CoreInfo } from './discover';
+import { brokerId, coreInfo, findCores } from './discover';
+import { RoonError, Target } from './errors';
+import { paired, startOfficial } from './official';
 import { log } from './log';
+
+export { RoonError } from './errors';
 
 const IDLE_MS = 120_000;
 const INTERNAL_PORT = 9332;
-
-export class RoonError extends Error {
-  constructor(message: string, readonly kind: 'not_found' | 'invalid' | 'unavailable' | 'roon' = 'roon') { super(message); }
-}
-
-export interface Target { host: string; port: number; info: CoreInfo }
 
 let target: Target | null = null;
 let client: RoonClient | null = null;
@@ -23,8 +21,14 @@ let idleTimer: ReturnType<typeof setTimeout> | null = null;
 let queue: Promise<unknown> = Promise.resolve();
 
 /** The Core: ROON_HOST ("host" or "host:port", the extension API's port) or the local network. */
-export async function findTarget(): Promise<Target> {
-  if (target) return target;
+let finding: Promise<Target> | null = null;
+export function findTarget(): Promise<Target> {
+  if (target) return Promise.resolve(target);
+  // One search at a time: the start of the server and the first tool may ask together.
+  finding ??= locate().finally(() => { finding = null; });
+  return finding;
+}
+async function locate(): Promise<Target> {
   const configured = process.env.ROON_HOST?.trim();
   let host: string, port: number;
   if (configured) {
@@ -39,6 +43,7 @@ export async function findTarget(): Promise<Target> {
   const info = await coreInfo(host, port);
   target = { host, port, info };
   log(`Roon Core: ${info.name} ${info.version} at ${host}`);
+  startOfficial(target);
   return target;
 }
 
@@ -52,6 +57,8 @@ function close(reason: string): void {
 async function open(): Promise<RoonClient> {
   if (client) return client;
   const t = await findTarget();
+  // The user's consent first: the extension enabled in Roon (see official.ts).
+  await paired();
   const c = new RoonClient({ host: t.host, port: INTERNAL_PORT, serverBrokerId: brokerId(t.info.coreId), settleMs: 1500 });
   c.conn.onclosed = () => { try { c.remoting.failPending('broker connection closed'); } catch { /* nothing pending */ } if (client === c) { client = null; log('connection closed by the Core'); } };
   const t0 = Date.now();
