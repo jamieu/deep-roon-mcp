@@ -85,6 +85,8 @@ export async function nowPlaying() {
       if (tr && field(tr, 'Title') && !stream) {
         const al = obj(c, field(tr, 'Album'));
         r.title = field(tr, 'Title'); r.artist = clean(field(al, 'PerformedBy')); r.album = field(al, 'Title');
+        const tk = field(tr, 'TrackId'); if (tk !== undefined && tk !== null) r.track_key = String(tk);   // keys, for roon_album and a client that opens the album
+        const ak = field(al, 'AlbumId'); if (ak !== undefined && ak !== null) r.album_key = String(ak);
         const f = field(tr, 'Format'); if (f) r.format = f;
         const l = field(tr, 'LengthSeconds'); if (typeof l === 'number') r.length = duration(l);
       } else {
