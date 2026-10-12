@@ -155,6 +155,19 @@ The same three settings as environment variables: `ROON_HOST` (the Core's addres
 
 Then, once, in Roon: Settings › Extensions › **Enable** next to "Deep Roon MCP". Until then the tools say so.
 
+### Over HTTP
+
+For a client that can't start a program on your computer, Deep Roon MCP can serve MCP over HTTP instead (Streamable
+HTTP, stateless, `POST /mcp`):
+
+```sh
+DEEP_ROON_HTTP=127.0.0.1:9301 npx -y deep-roon-mcp
+```
+
+`DEEP_ROON_HTTP` is `[host:]port`; the host defaults to `127.0.0.1`. There is **no authentication**: keep it on your own
+computer, or put it behind something that has one (a reverse proxy with a key, a private tunnel). Never expose it to
+the internet as it is.
+
 ### From source
 
 ```sh
