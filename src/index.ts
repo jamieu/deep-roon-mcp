@@ -8,6 +8,10 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { registerReadTools } from './tools/read';
 import { registerControlTools } from './tools/control';
 import { registerLibraryTools } from './tools/library';
+import { registerStatusTool } from './tools/status';
+import { afterFirstConnect } from './core/session';
+import { checkForUpdate, selfTest } from './core/status';
+import { runSelfTest } from './roon/selftest';
 import { findTarget, shutdown } from './core/session';
 import { log } from './core/log';
 import { version } from '../package.json';
@@ -20,9 +24,26 @@ const INSTRUCTIONS = `Deep Roon MCP connects to the user's own Roon Core (music 
 
 async function main(): Promise<void> {
   const server = new McpServer({ name: 'deep-roon-mcp', title: 'Deep Roon MCP', version, websiteUrl: 'https://github.com/renebouwmeester/deep-roon-mcp' }, { instructions: INSTRUCTIONS });
-  registerReadTools(server);
-  registerControlTools(server);
-  registerLibraryTools(server);
+  // The switches (the bundle's settings, or the environment):
+  //   DEEP_ROON_INTERNAL=off   only the official extension API — Roon's internal protocol stays closed
+  //   DEEP_ROON_TOOLS=essentials   seventeen tools instead of all, for clients and small models that choke on many
+  const internal = !/^(off|false|0|no)$/i.test(process.env.DEEP_ROON_INTERNAL ?? '');
+  const essentials = /^(essentials|true|1|yes)$/i.test(process.env.DEEP_ROON_TOOLS ?? process.env.DEEP_ROON_ESSENTIALS ?? '');
+  if (essentials) {
+    const keep = new Set(['roon_status', 'roon_search', 'roon_album', 'roon_review', 'roon_bio', 'roon_artist', 'roon_zones', 'roon_now_playing', 'roon_play',
+      'roon_play_tracks', 'roon_control', 'roon_volume', 'roon_queue', 'roon_playlists', 'roon_play_playlist', 'roon_daily_picks', 'roon_top']);
+    const original = server.registerTool.bind(server) as Function;
+    (server as { registerTool: Function }).registerTool = (name: string, cfg: unknown, cb: unknown) => (keep.has(name) ? original(name, cfg, cb) : undefined);
+  }
+  registerStatusTool(server, internal);
+  registerReadTools(server, internal);
+  registerControlTools(server, internal);
+  if (internal) {
+    registerLibraryTools(server);
+    afterFirstConnect(() => selfTest(runSelfTest));
+  }
+  checkForUpdate().catch(() => {});
+  log(`${internal ? 'internal protocol on' : 'internal protocol OFF — official API only'}${essentials ? ', essentials' : ''}`);
   await server.connect(new StdioServerTransport());
   log(`${version} ready (stdio)`);
   // Find the Core and connect the extension right away, so Deep Roon MCP shows up in Roon's Settings → Extensions.

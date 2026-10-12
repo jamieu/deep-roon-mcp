@@ -96,6 +96,7 @@ export async function paired(ms = 8000): Promise<any> { // eslint-disable-line @
 }
 
 export const officialZones = (): OfficialZone[] => [...zones.values()];
+export const isPaired = (): boolean => !!transport;
 
 /** Paired, and the zones in (they come a moment after the pairing): what the volume and the state need. */
 export async function officialReady(ms = 4000): Promise<void> {

@@ -22,7 +22,8 @@
     "deep-roon-mcp": "dist/deep-roon-mcp.js"
   },
   "files": [
-    "dist",
+    "dist/deep-roon-mcp.js",
+    "dist/THIRD_PARTY_LICENSES.txt",
     "LICENSE",
     "NOTICE",
     "README.md"
@@ -33,19 +34,20 @@
   "scripts": {
     "check": "tsc --noEmit",
     "build": "node scripts/build.mjs",
-    "start": "node dist/deep-roon-mcp.js"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.32.1",
-    "node-roon-api": "github:roonlabs/node-roon-api",
-    "node-roon-api-transport": "github:roonlabs/node-roon-api-transport",
-    "ws": "^8.22.0",
-    "zod": "^4.6.6"
+    "start": "node dist/deep-roon-mcp.js",
+    "bundle": "node scripts/bundle.mjs",
+    "prepublishOnly": "node scripts/build.mjs"
   },
   "devDependencies": {
+    "@anthropic-ai/mcpb": "^2.1.2",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "@types/node": "^26.6.5",
     "@types/ws": "^8.18.2",
     "esbuild": "^0.28.2",
-    "typescript": "^7.0.2"
+    "node-roon-api": "github:roonlabs/node-roon-api",
+    "node-roon-api-transport": "github:roonlabs/node-roon-api-transport",
+    "typescript": "^7.0.2",
+    "ws": "^8.22.0",
+    "zod": "^4.6.6"
   }
 }

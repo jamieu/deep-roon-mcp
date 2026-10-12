@@ -2,6 +2,7 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { RoonError } from '../core/session';
 import { log } from '../core/log';
+import { updateNotice } from '../core/status';
 
 /** Drops undefined values, so answers stay short. */
 const compact = (_k: string, v: unknown) => (v === undefined ? undefined : typeof v === 'bigint' ? v.toString() : v);
@@ -9,7 +10,8 @@ const compact = (_k: string, v: unknown) => (v === undefined ? undefined : typeo
 export async function run(work: () => Promise<unknown>): Promise<CallToolResult> {
   try {
     const result = await work();
-    return { content: [{ type: 'text', text: JSON.stringify(result, compact) }] };
+    const notice = updateNotice();
+    return { content: [{ type: 'text', text: JSON.stringify(result, compact) }, ...(notice ? [{ type: 'text' as const, text: notice }] : [])] };
   } catch (e) {
     const err = e as Error;
     let text: string;

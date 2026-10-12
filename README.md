@@ -15,7 +15,7 @@ server of its own and sends nothing anywhere else. What you ask goes to your MCP
 
 ## Status
 
-Version 0.1 (in progress): 49 tools.
+Version 0.1: fifty tools.
 
 **Reading** — changes nothing in Roon:
 
@@ -28,6 +28,7 @@ Version 0.1 (in progress): 49 tools.
 | `roon_review` | The review Roon shows, in full, with its author |
 | `roon_bio` | The biography Roon shows, in full, with related artists |
 | `roon_artist` | An artist's discography, oldest first |
+| `roon_status` | How Deep Roon MCP stands: Core, pairing, internal protocol, self-test, newer version |
 | `roon_zones` | Roon's zones and groups |
 | `roon_now_playing` | What plays in each zone, with the volume |
 | `roon_queue` | A zone's queue |
@@ -79,30 +80,53 @@ Version 0.1 (in progress): 49 tools.
 
 ## Install
 
-Requires Node 18 or newer and a Roon Core on the same network.
+Deep Roon MCP runs on a computer on the same network as your Roon Core (Mac, Windows or Linux), next to your MCP client.
+
+### Claude Desktop — one click
+
+1. Download **`deep-roon-mcp-<version>.mcpb`** from the [latest release](https://github.com/renebouwmeester/deep-roon-mcp/releases/latest).
+2. Open it (double-click, or drag it onto Claude Desktop's Settings › Extensions). Claude Desktop shows the tools and the
+   settings; click Install. It runs on Claude Desktop's own Node — nothing else to install.
+3. **In Roon:** Settings › Extensions › **Enable** next to "Deep Roon MCP". Once.
+4. Ask something: "What's new on Qobuz in jazz?", "Show me Roon's review of Kind of Blue", "Play Spirit of Eden in the
+   living room".
+
+The settings (Claude Desktop › Settings › Extensions › Deep Roon MCP):
+
+| Setting | What it does |
+|---|---|
+| Roon Core address | Empty: found on your network. Fill in the Core's address for another subnet or a private VPN (Tailscale) |
+| Essentials only | Seventeen tools instead of fifty, for small models |
+| Use Roon's internal protocol | Off: only the official API — zones, playback, volume, grouping; no search, reviews, Focus or history |
+
+### Other clients
+
+Needs [Node.js](https://nodejs.org) 18 or newer. The package runs straight from npm with `npx`:
+
+**Claude Code**
 
 ```sh
-npm install -g deep-roon-mcp        # not published yet — for now: build from source, below
+claude mcp add deep-roon -- npx -y deep-roon-mcp
 ```
 
-**Claude Code:** `claude mcp add deep-roon -- deep-roon-mcp`
-
-**Claude Desktop and other clients** (Cursor, VS Code, LM Studio …) — add to the client's MCP configuration:
+**Cursor, VS Code, Windsurf, Cline, LM Studio, Claude Desktop by hand …** — in the client's MCP configuration:
 
 ```json
 {
   "mcpServers": {
-    "deep-roon": { "command": "deep-roon-mcp" }
+    "deep-roon": {
+      "command": "npx",
+      "args": ["-y", "deep-roon-mcp"],
+      "env": { "ROON_HOST": "", "DEEP_ROON_TOOLS": "", "DEEP_ROON_INTERNAL": "" }
+    }
   }
 }
 ```
 
-**Once, in Roon:** Settings › Extensions › Enable next to "Deep Roon MCP". Until then the tools say so. The pairing is kept
-in your own configuration folder (on a Mac `~/Library/Application Support/deep-roon-mcp`).
+The same three settings as environment variables: `ROON_HOST` (the Core's address, empty = find it), `DEEP_ROON_TOOLS=essentials`,
+`DEEP_ROON_INTERNAL=off`. Leave out what you don't need. VS Code calls the block `"servers"` instead of `"mcpServers"`.
 
-Deep Roon MCP finds the Core on your network by itself. When it can't — another subnet, a VPN such as Tailscale — set
-`ROON_HOST` to the Core's address (`"env": { "ROON_HOST": "192.168.1.20" }` in the configuration above). Over a VPN, only
-ever a private one.
+Then, once, in Roon: Settings › Extensions › **Enable** next to "Deep Roon MCP". Until then the tools say so.
 
 ### From source
 
@@ -112,12 +136,24 @@ cd deep-roon-mcp && npm install && npm run build
 # then use: node /path/to/deep-roon-mcp/dist/deep-roon-mcp.js
 ```
 
+## When something's wrong
+
+Ask your client to run **`roon_status`**: the Core it found, whether it's enabled in Roon, whether the internal protocol
+works, and a self-test of a few reads with the tools each stands for. After a Roon update a tool may break until Deep Roon
+MCP is updated — the first answer says so when a newer version is out. Issues:
+[github.com/renebouwmeester/deep-roon-mcp/issues](https://github.com/renebouwmeester/deep-roon-mcp/issues) (paste the
+status; it holds no secrets).
+
 ## How it behaves
 
 - Short connections, as Roon Labs asked: opened for a question, closed after two minutes of quiet, one at a time, questions
   one after another; a PING every 10 s while open, so the Core doesn't drop the session.
 - Album, track and artist keys stay valid between calls.
 - The log goes to stderr (your MCP client keeps it).
+- At the start it asks GitHub once whether a newer release is out (`DEEP_ROON_NO_UPDATE_CHECK=1` turns that off). Nothing
+  else leaves your network except what your client sends to its model.
+- The pairing with Roon is kept in your configuration folder (Mac `~/Library/Application Support/deep-roon-mcp`, Windows
+  `%APPDATA%\deep-roon-mcp`, Linux `~/.config/deep-roon-mcp`).
 
 ## Credits
 

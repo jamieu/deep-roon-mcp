@@ -19,6 +19,11 @@ let target: Target | null = null;
 let client: RoonClient | null = null;
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
 let queue: Promise<unknown> = Promise.resolve();
+/** Runs once, after the first connection (the self-test, set by index.ts). */
+let onFirstConnect: (() => Promise<void>) | null = null;
+export function afterFirstConnect(f: () => Promise<void>): void { onFirstConnect = f; }
+/** What's known now, without connecting. */
+export const knownTarget = (): Target | null => target;
 
 /** The Core: ROON_HOST ("host" or "host:port", the extension API's port) or the local network. */
 let finding: Promise<Target> | null = null;
@@ -66,6 +71,7 @@ async function open(): Promise<RoonClient> {
   catch (e) { target = null; throw new RoonError(`Can't connect to Roon's internal protocol at ${t.host}:${INTERNAL_PORT} (${(e as Error).message})`, 'unavailable'); }
   client = c;
   log(`connected to the Core in ${Date.now() - t0} ms — ${c.graph.objects.size} objects`);
+  if (onFirstConnect) { const f = onFirstConnect; onFirstConnect = null; setTimeout(() => { f().catch(() => {}); }, 0); }
   return c;
 }
 
