@@ -120,7 +120,7 @@ export function sourceOf(...os: Any[]): Source | undefined {
 }
 export interface AlbumRow {
   kind: 'album'; key: string; title: string; artist: string; format?: string; year?: number; stars?: number; label?: string;
-  source: Source; in_library?: boolean; favorite?: boolean; listen_later?: boolean; popularity?: number;
+  source: Source; in_library?: boolean; favorite?: boolean; listen_later?: boolean; popularity?: number; image?: string;
 }
 export function albumRow(c: C, o: Any): AlbumRow {
   const fm = obj(c, field(o, 'AlbumFormat'));
@@ -133,6 +133,8 @@ export function albumRow(c: C, o: Any): AlbumRow {
   if (flag(field(o, 'IsFavorite'))) r.favorite = true;
   if (flag(field(o, 'IsListenLater'))) r.listen_later = true;
   const p = field(o, 'Popularity'); if (typeof p === 'number') r.popularity = Math.round(p * 100) / 100;
+  // The cover's image key (12 Oct 2026, for clients that draw: the Core serves it on http://<core>:9330/api/image/<key>).
+  const img = imageKey(c, o); if (img) r.image = img;
   return r;
 }
 export function resultRow(c: C, o: Any): Any {
@@ -141,6 +143,7 @@ export function resultRow(c: C, o: Any): Any {
   if (t === 'PerformerLite' || t === 'Performer') {
     const r: Any = { kind: 'artist', key: String(field(o, 'PerformerId') ?? ''), name: field(o, 'Name') ?? '' };
     const n = field(o, 'MainPerformerAlbumCount'); if (typeof n === 'number' && n > 0) r.albums_in_library = n;
+    const img = imageKey(c, o); if (img) r.image = img;
     return r;
   }
   if (t === 'TrackLite' || t === 'Track') {
@@ -151,6 +154,7 @@ export function resultRow(c: C, o: Any): Any {
     const f = field(o, 'Format'); if (f) r.format = f;
     const l = field(o, 'LengthSeconds'); if (typeof l === 'number') r.length = duration(l);
     r.source = sourceOf(o, al) ?? 'library';
+    const img = imageKey(c, al) ?? imageKey(c, o); if (img) r.image = img;
     return r;
   }
   return { kind: t, title: field(o, 'Title') ?? field(o, 'Name') ?? '' };

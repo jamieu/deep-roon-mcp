@@ -66,6 +66,7 @@ export async function nowPlaying() {
       if (off?.state) r.state = off.state;
       const v = off?.outputs.find((o) => o.volume)?.volume;
       if (v) { r.volume = v.value; r.volume_max = v.max; if (v.is_muted) r.muted = true; }
+      const img = off?.now_playing?.image_key; if (img) r.image = img;   // the cover's key (:9330/api/image/<key>)
       const outs = c.graph.findByType('Endpoint').filter((e) => { const zz = field(e, 'Zone'); return isRef(zz) && String(zz.$ref) === String(z.oid); });
       if (outs.some((e) => field(e, 'IsStandby') === true)) r.standby = true;
       if (field(z, 'Shuffle') === true) r.shuffle = true;
