@@ -98,7 +98,7 @@ export function registerLibraryTools(server: McpServer): void {
 
   server.registerTool('roon_mixes', {
     title: 'Daily Mixes',
-    description: 'The Daily Mixes from Roon\'s Home: today\'s personal mixes, each built around an artist (or genre) the user listens to, with a few `touchstones` and a `key` for roon_play_mix. They change every day.',
+    description: 'Roon\'s own Daily Mixes, from Roon\'s Home — NOT TIDAL\'s mixes: for "TIDAL mixes", "My Mix", "My Daily Discovery" or TIDAL\'s daily mixes use roon_tidal_playlists with `shelf: "my_mixes"`. These are today\'s personal Roon mixes, each built around an artist (or genre) the user listens to, with a few `touchstones` and a `key` for roon_play_mix. They change every day.',
     inputSchema: {},
     annotations: READ,
   }, () => run(() => home.mixes()));
@@ -120,7 +120,7 @@ export function registerLibraryTools(server: McpServer): void {
 
   server.registerTool('roon_tidal_playlists', {
     title: 'TIDAL playlists',
-    description: 'TIDAL\'s playlists as Roon shows them, when TIDAL is signed in: the editorial shelves `new`, `recommended`, `exclusive`, `masters`, `popular`, `essential`, `hires_classics`, `recently_updated`, `forgotten_favorites`; the user\'s own TIDAL mixes `my_mixes` (My Daily Discovery, My Mix 1 …) and `history_mixes` (My Most Listened, the yearly ones …); or the playlists of one TIDAL `genre` or `mood` (ids from roon_genres with `service: "tidal"`). Each playlist has a `key` for roon_playlist (its tracks) and roon_play_playlist, a description, the number of tracks and a few of its artists.',
+    description: 'TIDAL\'s playlists as Roon shows them, when TIDAL is signed in: the editorial shelves `new`, `recommended`, `exclusive`, `masters`, `popular`, `essential`, `hires_classics`, `recently_updated`, `forgotten_favorites`; the user\'s own TIDAL mixes `my_mixes` (My Daily Discovery, My Mix 1 …, My New Arrivals — what the user means by their TIDAL (daily) mixes; not roon_mixes, which are Roon\'s) and `history_mixes` (My Most Listened, the yearly ones …); or the playlists of one TIDAL `genre` or `mood` (ids from roon_genres with `service: "tidal"`). Each playlist has a `key` for roon_playlist (its tracks — readable without playing) and roon_play_playlist, a description, the number of tracks and a few of its artists.',
     inputSchema: {
       shelf: z.enum(Object.keys(tidal.PLAYLIST_SHELVES) as [string, ...string[]]).optional().describe('Default new.'),
       genre: z.string().optional().describe('A TIDAL genre (roon_genres, service tidal).'), mood: z.string().optional().describe('A TIDAL mood (roon_genres, service tidal).'),

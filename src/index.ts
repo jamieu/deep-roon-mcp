@@ -20,6 +20,7 @@ const INSTRUCTIONS = `Deep Roon MCP connects to the user's own Roon Core (music 
 - Albums, tracks and artists come with a \`key\`; keys stay valid between calls — no need to search again.
 - Reviews and biographies are Roon's own texts: when asked for them, show them in full with the author's name.
 - What plays changes all the time: read roon_now_playing afresh before describing it.
+- "Daily Mixes" are Roon's own (roon_mixes); the user's TIDAL mixes (My Mix 1 …, My Daily Discovery) are roon_tidal_playlists with shelf my_mixes, and their tracks can be read with roon_playlist.
 - Unofficial: this uses Roon's internal protocol, which a Roon update can change; if a tool says so, tell the user to check for an update.`;
 
 async function main(): Promise<void> {
