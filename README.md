@@ -138,6 +138,9 @@ cd deep-roon-mcp && npm install && npm run build
 
 ## When something's wrong
 
+**"No Roon Core found" on a Mac:** macOS asks once whether the app may use the local network — for Claude Desktop that's
+Claude. Allow it (System Settings › Privacy & Security › Local Network › Claude), then try again.
+
 Ask your client to run **`roon_status`**: the Core it found, whether it's enabled in Roon, whether the internal protocol
 works, and a self-test of a few reads with the tools each stands for. After a Roon update a tool may break until Deep Roon
 MCP is updated — the first answer says so when a newer version is out. Issues:
