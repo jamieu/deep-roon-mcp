@@ -106,19 +106,30 @@ export function localTime(iso: string | number | undefined): string | undefined 
   return `${d.getFullYear()}-${t(d.getMonth() + 1)}-${t(d.getDate())} ${t(d.getHours())}:${t(d.getMinutes())}`;
 }
 
+export type Source = 'library' | 'Qobuz' | 'TIDAL' | 'streaming';
+/** Where an album or track comes from: ContentSource (MediaSource: Local = 1, TIDAL = 128, Qobuz = 256) — also for a
+ *  streaming album that's in the library, whose Source is then Local (measured 12 Oct 2026). */
+export function sourceOf(...os: Any[]): Source | undefined {
+  for (const o of os) {
+    const v = field(o, 'ContentSource') ?? field(o, 'Source');
+    if (v === 128) return 'TIDAL';
+    if (v === 256) return 'Qobuz';
+    if (v === 1) return 'library';
+  }
+  return undefined;
+}
 export interface AlbumRow {
   kind: 'album'; key: string; title: string; artist: string; format?: string; year?: number; stars?: number; label?: string;
-  source: 'library' | 'Qobuz'; in_library?: boolean; favorite?: boolean; listen_later?: boolean; popularity?: number;
+  source: Source; in_library?: boolean; favorite?: boolean; listen_later?: boolean; popularity?: number;
 }
 export function albumRow(c: C, o: Any): AlbumRow {
   const fm = obj(c, field(o, 'AlbumFormat'));
-  const r: AlbumRow = { kind: 'album', key: String(field(o, 'AlbumId') ?? ''), title: field(o, 'Title') ?? '', artist: clean(field(o, 'PerformedBy')), source: 'library' };
+  const r: AlbumRow = { kind: 'album', key: String(field(o, 'AlbumId') ?? ''), title: field(o, 'Title') ?? '', artist: clean(field(o, 'PerformedBy')), source: sourceOf(o) ?? (field(fm, 'IsStreaming') === true ? 'streaming' : 'library') };
   const f = field(fm, 'FormatString'); if (f) r.format = f;
-  if (field(fm, 'IsStreaming') === true) r.source = 'Qobuz';
   const y = yearOf(field(o, 'OriginalReleaseDate')) ?? yearOf(field(o, 'ReleaseDate')); if (y) r.year = y;
   const st = field(o, 'Rating'); if (typeof st === 'number' && st > 0) r.stars = st / 2;   // Roon's rating 1–10 = half stars
   const lb = strings(c, field(o, 'Labels')); if (lb.length) r.label = lb.join(' / ');
-  if (field(o, 'Source') === 1) r.in_library = true;    // MediaSource: Local = 1 (in the library, also a Qobuz album), Qobuz = 256
+  if (field(o, 'Source') === 1) r.in_library = true;    // Source: Local = 1 — in the library, also a streaming album
   if (flag(field(o, 'IsFavorite'))) r.favorite = true;
   if (flag(field(o, 'IsListenLater'))) r.listen_later = true;
   const p = field(o, 'Popularity'); if (typeof p === 'number') r.popularity = Math.round(p * 100) / 100;
@@ -139,7 +150,7 @@ export function resultRow(c: C, o: Any): Any {
     const ak = field(al, 'AlbumId'); if (ak !== undefined && ak !== null) r.album_key = String(ak);
     const f = field(o, 'Format'); if (f) r.format = f;
     const l = field(o, 'LengthSeconds'); if (typeof l === 'number') r.length = duration(l);
-    r.source = field(o, 'Source') === 256 ? 'Qobuz' : 'library';   // MediaSource: Local = 1, Qobuz = 256
+    r.source = sourceOf(o, al) ?? 'library';
     return r;
   }
   return { kind: t, title: field(o, 'Title') ?? field(o, 'Name') ?? '' };

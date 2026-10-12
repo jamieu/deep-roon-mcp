@@ -1,4 +1,4 @@
-// Search, Qobuz's shelves and genres, an album's page, reviews, biographies and discographies — read-only.
+// Search, the streaming shelves and genres (Qobuz, TIDAL), an album's page, reviews, biographies and discographies — read-only.
 import { isRef } from '../intern';
 import { Arg, buildArgs } from '../intern/proto/serializer';
 import { BinaryReader } from '../intern/proto/reader';
@@ -6,11 +6,38 @@ import { BinaryWriter } from '../intern/proto/writer';
 import { withCore, RoonError } from '../core/session';
 import { Any, C, albumRow, clean, dateText, duration, field, flag, items, obj, partialList, refList, resultRow, short, strings, untilField, untilLoaded, wait } from './graph';
 
-const qobuz = (c: C) => {
-  const q = c.graph.findByType('Qobuz')[0];
-  if (!q) throw new RoonError('This Roon Core has no Qobuz service (Qobuz isn\'t signed in?)', 'unavailable');
-  return q;
-};
+// ---- the streaming services ----
+export type Service = 'qobuz' | 'tidal';
+export const SERVICE_NAME: Record<Service, string> = { qobuz: 'Qobuz', tidal: 'TIDAL' };
+const SERVICE_TYPE: Record<Service, string> = { qobuz: 'Qobuz', tidal: 'Tidal' };
+/** The service object when it's signed in on this Core (LoginStatus 4 — both services, measured 12 Oct 2026), else null. */
+export function signedIn(c: C, s: Service): Any | null {
+  const o = c.graph.findByType(SERVICE_TYPE[s])[0];
+  if (!o) return null;
+  const st = field(o, 'LoginStatus');
+  return st === undefined || st === 4 ? o : null;
+}
+/** The service to ask: the one asked for, else Qobuz when it's signed in, else TIDAL. */
+export function streaming(c: C, wanted?: Service): { service: Service; o: Any } {
+  if (wanted) {
+    const o = signedIn(c, wanted);
+    if (!o) throw new RoonError(`${SERVICE_NAME[wanted]} isn't signed in on this Roon Core`, 'unavailable');
+    return { service: wanted, o };
+  }
+  for (const s of ['qobuz', 'tidal'] as Service[]) { const o = signedIn(c, s); if (o) return { service: s, o }; }
+  throw new RoonError('Neither Qobuz nor TIDAL is signed in on this Roon Core', 'unavailable');
+}
+/** A PartialList answer from a service, its objects loaded. */
+type Params = { types: { type: string; name: string }[]; args: Buffer };
+const NONE: Params = { types: [], args: Buffer.alloc(0) };
+export async function shelf(c: C, s: Service, o: Any, method: string, of: string, offset: number, count: number, before: Params = NONE, after: Params = NONE) {
+  const res = await c.call(SERVICE_TYPE[s], method, [...before.types, { type: 'int', name: 'offset' }, { type: 'int', name: 'count' }, ...after.types, { type: `ResultCallback<PartialList<${of}>>`, name: 'cb_result' }],
+    Buffer.concat([before.args, buildArgs([Arg.int(Math.max(0, offset)), Arg.int(Math.min(Math.max(1, count), 100))]), after.args]), o.oid);
+  if (!res.success) throw new RoonError(`${SERVICE_NAME[s]}::${method}: ${res.status}`);
+  const list = partialList(c, c.graph.decodeReturnValue(Uint8Array.from(res.payload)));
+  await untilLoaded(c, list.items);
+  return { total: list.total, items: list.items.map((x) => obj(c, x)).filter(Boolean) };
+}
 
 export async function search(query: string, limit: number, kind?: 'album' | 'track' | 'artist') {
   return withCore(async (c) => {
@@ -24,34 +51,82 @@ export async function search(query: string, limit: number, kind?: 'album' | 'tra
   });
 }
 
-export const SECTIONS: Record<string, string> = {
-  new: 'GetNewAlbums', qobuzissimes: 'GetQobuzissimesAlbums', press_awards: 'GetPressAwardsAlbums', top: 'GetTopAlbums',
-  trending: 'GetStillTrendingAlbums', ideal_discography: 'GetIdealDiscographyAlbums',
+export const SECTIONS: Record<Service, Record<string, string>> = {
+  qobuz: { new: 'GetNewAlbums', qobuzissimes: 'GetQobuzissimesAlbums', press_awards: 'GetPressAwardsAlbums', top: 'GetTopAlbums',
+           trending: 'GetStillTrendingAlbums', ideal_discography: 'GetIdealDiscographyAlbums' },
+  tidal: { new: 'GetNew', recommended: 'GetRecommended', top: 'GetTop', rising: 'GetRising', masters: 'GetMasters' },
 };
 
-export async function section(name: string, limit: number, offset: number, genres: string[] = []) {
-  const method = SECTIONS[name];
-  if (!method) throw new RoonError(`Unknown section; choose from ${Object.keys(SECTIONS).join(', ')}`, 'invalid');
+/** A shelf of albums (or, at TIDAL, of tracks). Qobuz narrows by genre ids; TIDAL by one genre (its name or path) and has
+ *  no genre filter on its other shelves — a genre there means TIDAL's genre page (Tidal::GetGenreAlbums / GetGenreTracks). */
+export async function section(name: string, limit: number, offset: number, genres: string[] = [], wanted?: Service, what: 'albums' | 'tracks' = 'albums') {
   return withCore(async (c) => {
-    const q = qobuz(c);
-    const res = await c.call('Qobuz', method,
-      [{ type: 'int', name: 'offset' }, { type: 'int', name: 'count' }, { type: 'IList<string>', name: 'filter_genre_ids' }, { type: 'ResultCallback<PartialList<AlbumLite>>', name: 'cb_result' }],
-      buildArgs([Arg.int(Math.max(0, offset)), Arg.int(Math.min(Math.max(1, limit), 100)), Arg.collection(genres.map((g) => buildArgs([Arg.str(g)])))]), q.oid);
-    if (!res.success) throw new RoonError(`Qobuz::${method}: ${res.status}`);
-    const list = partialList(c, c.graph.decodeReturnValue(Uint8Array.from(res.payload)));
-    await untilLoaded(c, list.items);
-    return { section: name, genre: genres.length ? genres : undefined, total: list.total, offset,
-             rows: list.items.map((x) => obj(c, x)).filter(Boolean).map((o) => albumRow(c, o)) };
+    const { service, o } = streaming(c, wanted);
+    const methods = SECTIONS[service];
+    if (!methods[name] && !(service === 'tidal' && genres.length)) throw new RoonError(`${SERVICE_NAME[service]} has no shelf "${name}"; choose from ${Object.keys(methods).join(', ')}`, 'invalid');
+    if (what === 'tracks' && service !== 'tidal') throw new RoonError('Shelves of tracks are TIDAL\'s; Qobuz\'s shelves are albums', 'invalid');
+    if (what === 'tracks' && name === 'masters') throw new RoonError('TIDAL\'s masters shelf is albums only', 'invalid');
+    let res;
+    if (service === 'qobuz') {
+      if (genres.some((g) => !/^\d+$/.test(g))) throw new RoonError('Qobuz genres are ids (numbers) — see roon_genres', 'invalid');
+      res = await shelf(c, service, o, methods[name], 'AlbumLite', offset, limit, NONE,
+        { types: [{ type: 'IList<string>', name: 'filter_genre_ids' }], args: buildArgs([Arg.collection(genres.map((g) => buildArgs([Arg.str(g)])))]) });
+    } else if (genres.length) {
+      const g = await tidalPick(c, o, 'GetGenres', genres[0]);
+      res = await shelf(c, service, o, what === 'tracks' ? 'GetGenreTracks' : 'GetGenreAlbums', what === 'tracks' ? 'TrackLite' : 'AlbumLite', offset, limit,
+        { types: [{ type: 'TidalGenre', name: 'genre' }], args: tidalStruct(c, 'TidalGenre', g) });
+    } else {
+      res = await shelf(c, service, o, methods[name] + (what === 'tracks' ? 'Tracks' : 'Albums'), what === 'tracks' ? 'TrackLite' : 'AlbumLite', offset, limit);
+    }
+    return { service: SERVICE_NAME[service], section: genres.length && service === 'tidal' ? undefined : name, genre: genres.length ? genres : undefined,
+             what: service === 'tidal' ? what : undefined, total: res.total, offset, rows: res.items.map((x) => resultRow(c, x)) };
   });
 }
 
-/** Qobuz's genres (Qobuz::GetGenres): a list of structs {Name, GenreId} by value — the length, the count, and per item a
- *  marker (1 = by value), a type number, a length and the members as (index, text) up to a 0. */
-export async function genres(parent?: string) {
+/** TIDAL's genres and moods (Tidal::GetGenres / GetMoods): structs {Name, Path, Image} by value — the length, the count,
+ *  and per item a marker, a type number, a length and the members as (index, value): 1 = Name, 2 = Path, 3 = Image. */
+async function tidalList(c: C, o: Any, method: 'GetGenres' | 'GetMoods'): Promise<{ name: string; path: string }[]> {
+  const res = await c.call('Tidal', method, [{ type: `ResultCallback<IList<${method === 'GetGenres' ? 'TidalGenre' : 'TidalMood'}>>`, name: 'cb_result' }], Buffer.alloc(0), o.oid);
+  if (!res.success) throw new RoonError(`TIDAL::${method}: ${res.status}`);
+  const rows: { name: string; path: string }[] = [];
+  if (res.payload.length > 2) {
+    const r = new BinaryReader(Uint8Array.from(res.payload)); r.integer(); const n = r.flexInt();
+    for (let i = 0; i < n && r.remaining > 0; i++) {
+      r.flexInt(); r.flexInt(); const len = r.flexInt(); const m = new BinaryReader(r.bytes(len)); const g: Any = {};
+      while (m.remaining > 0) { const idx = m.flexInt(); if (idx !== 1 && idx !== 2) break; const t = m.string(); if (idx === 1) g.name = t; else g.path = t; }
+      if (g.path) rows.push({ name: g.name ?? g.path, path: g.path });
+    }
+  }
+  return rows;
+}
+/** One TIDAL genre or mood by its path or name (any case). */
+export async function tidalPick(c: C, o: Any, method: 'GetGenres' | 'GetMoods', want: string) {
+  const all = await tidalList(c, o, method);
+  const w = want.trim().toLowerCase();
+  const g = all.find((x) => x.path.toLowerCase() === w) ?? all.find((x) => x.name.toLowerCase() === w);
+  if (!g) throw new RoonError(`TIDAL has no ${method === 'GetGenres' ? 'genre' : 'mood'} "${want}"; choose from ${all.map((x) => x.path).join(', ')}`, 'invalid');
+  return g;
+}
+/** A TidalGenre or TidalMood by value, for the methods that take one. */
+export function tidalStruct(c: C, type: 'TidalGenre' | 'TidalMood', g: { name: string; path: string }): Buffer {
+  const T = `Sooloos.Broker.Api.${type}`;
+  return c.structArg(T, [{ name: `string ${T}::Name`, propType: 20, value: new BinaryWriter().string(g.name).toBuffer() },
+                         { name: `string ${T}::Path`, propType: 20, value: new BinaryWriter().string(g.path).toBuffer() }]);
+}
+
+/** The genres of a service: Qobuz's with their ids (Qobuz::GetGenres: a list of structs {Name, GenreId} by value — the
+ *  length, the count, and per item a marker (1 = by value), a type number, a length and the members as (index, text) up
+ *  to a 0); TIDAL's genres and moods with their paths. */
+export async function genres(parent?: string, wanted?: Service) {
   return withCore(async (c) => {
-    const q = qobuz(c);
+    const { service, o } = streaming(c, wanted);
+    if (service === 'tidal') {
+      if (parent) throw new RoonError('TIDAL\'s genres have no sub-genres', 'invalid');
+      const [g, m] = [await tidalList(c, o, 'GetGenres'), await tidalList(c, o, 'GetMoods')];
+      return { service: 'TIDAL', genres: g.map((x) => ({ id: x.path, name: x.name })), moods: m.map((x) => ({ id: x.path, name: x.name })) };
+    }
     const res = await c.call('Qobuz', 'GetGenres', [{ type: 'string', name: 'parentGenreId' }, { type: 'ResultCallback<IList<QobuzGenre>>', name: 'cb_result' }],
-      buildArgs([Arg.str(parent || null)]), q.oid);
+      buildArgs([Arg.str(parent || null)]), o.oid);
     if (!res.success) throw new RoonError(`Qobuz::GetGenres: ${res.status}`);
     const rows: { id: string; name?: string }[] = [];
     if (res.payload.length > 2) {
@@ -62,7 +137,7 @@ export async function genres(parent?: string) {
         if (g.id) rows.push({ id: g.id, name: g.name });
       }
     }
-    return { parent: parent || undefined, genres: rows };
+    return { service: 'Qobuz', parent: parent || undefined, genres: rows };
   });
 }
 
@@ -244,16 +319,16 @@ export async function bio(key: string, max: number, wiki: boolean) {
   });
 }
 
-/** The discography: an artist's main albums at Qobuz (Qobuz::GetPerformerMainAlbumLites), oldest first. */
-export async function discography(key: string) {
+/** The discography: an artist's main albums at Qobuz or TIDAL (<Service>::GetPerformerMainAlbumLites), oldest first. */
+export async function discography(key: string, wanted?: Service) {
   return withCore(async (c) => {
-    const q = qobuz(c);
+    const { service, o: q } = streaming(c, wanted);
     const pv = await performer(c, key);
     const end = Date.now() + 1500; while (Date.now() < end && field(c.graph.getObject(pv.$ref), 'Name') === undefined) await wait(40);
     const p = c.graph.getObject(pv.$ref);
     if (!p || field(p, 'Name') === undefined) throw new RoonError(`Roon knows no artist with key ${key}`, 'not_found');
-    const res = await c.call('Qobuz', 'GetPerformerMainAlbumLites', [{ type: 'long', name: 'performerid' }, { type: 'ResultCallback<IList<AlbumLite>>', name: 'cb_result' }], buildArgs([Arg.long(BigInt(key))]), q.oid);
-    if (!res.success) throw new RoonError(`Qobuz::GetPerformerMainAlbumLites: ${res.status}`);
+    const res = await c.call(SERVICE_TYPE[service], 'GetPerformerMainAlbumLites', [{ type: 'long', name: 'performerid' }, { type: 'ResultCallback<IList<AlbumLite>>', name: 'cb_result' }], buildArgs([Arg.long(BigInt(key))]), q.oid);
+    if (!res.success) throw new RoonError(`${SERVICE_NAME[service]}::GetPerformerMainAlbumLites: ${res.status}`);
     const refs = refList(res.payload);
     await untilLoaded(c, refs.map((oid) => ({ $ref: oid })), 3000);
     const albums = refs.map((oid) => c.graph.getObject(oid)).filter((o) => o && field(o, 'Title') !== undefined).map((o) => albumRow(c, o))
@@ -261,6 +336,6 @@ export async function discography(key: string) {
     const artist: Any = { key, name: field(p, 'Name') };
     const n = field(p, 'MainPerformerAlbumCount'); if (typeof n === 'number') artist.albums_in_library = n;
     const from = field(p, 'BirthPlace'); if (from) artist.from = from;
-    return { artist, albums };
+    return { service: SERVICE_NAME[service], artist, albums };
   });
 }

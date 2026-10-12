@@ -23,7 +23,7 @@ const manifest = {
   name: 'deep-roon-mcp',
   display_name: 'Deep Roon MCP',
   version: pkg.version,
-  description: 'Talk to your Roon Core: search your library and Qobuz, read the reviews and biographies Roon shows, Focus, Daily Picks, your history — and play on your zones.',
+  description: 'Talk to your Roon Core: search your library, Qobuz and TIDAL, read the reviews and biographies Roon shows, Focus, Daily Picks, your history — and play on your zones.',
   long_description: [
     '**Unofficial.** Deep Roon MCP is not made, endorsed or supported by Roon Labs.',
     'It reaches your Roon Core two ways: Roon\'s official extension API (zones, playback, volume, grouping), and Roon\'s internal protocol — the one Roon\'s own apps use — through Arthur Soares\' [roon-api-reverse-engineering](https://github.com/arthursoares/roon-api-reverse-engineering). Roon Labs allows that protocol for tinkering with your own system, but it is not hardened for third-party use, any Roon update can change it, and misuse can cause memory or compute leaks in the Core. Read [Arthur\'s thread on the Roon Community](https://community.roonlabs.com/t/reverse-engineering-the-roon-desktop-clients-local-protocol-typescript-client-docs/321731) before you use it.',
@@ -35,7 +35,7 @@ const manifest = {
   repository: { type: 'git', url: 'https://github.com/renebouwmeester/deep-roon-mcp' },
   support: 'https://github.com/renebouwmeester/deep-roon-mcp/issues',
   license: 'Apache-2.0',
-  keywords: ['roon', 'music', 'qobuz', 'audio'],
+  keywords: ['roon', 'music', 'qobuz', 'tidal', 'audio'],
   server: {
     type: 'node',
     entry_point: 'server/index.js',

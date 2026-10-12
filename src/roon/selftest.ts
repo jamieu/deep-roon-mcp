@@ -23,9 +23,9 @@ export async function runSelfTest(): Promise<Check[]> {
     if (!a.tracks?.length) throw new Error('an album without tracks');
     return `${a.tracks.length} tracks`;
   }));
-  out.push(await timed('Qobuz shelf', 'roon_new, roon_genres, roon_artist', async () => {
-    try { const s = await lib.section('new', 1, 0); return `${s.total ?? '?'} new albums`; }
-    catch (e) { if (/no Qobuz/i.test((e as Error).message)) return 'no Qobuz on this Core (not an error)'; throw e; }
+  out.push(await timed('streaming shelf', 'roon_new, roon_genres, roon_artist, roon_tidal_playlists', async () => {
+    try { const s = await lib.section('new', 1, 0); return `${s.total ?? '?'} new albums at ${s.service}`; }
+    catch (e) { if (/Neither Qobuz nor TIDAL/i.test((e as Error).message)) return 'no Qobuz or TIDAL signed in on this Core (not an error)'; throw e; }
   }));
   return out;
 }

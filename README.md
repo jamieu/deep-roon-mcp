@@ -1,8 +1,8 @@
 # Deep Roon MCP
 
 The parts of Roon the official API doesn't reach, for Claude and any other MCP client: the reviews and biographies Roon
-shows, search across your library and Qobuz at once, Qobuz's editorial shelves, album pages with credits, artist
-discographies, and your own play history with real "most played" counts.
+shows, search across your library and Qobuz or TIDAL at once, their editorial shelves and TIDAL's playlists and mixes,
+album pages with credits, artist discographies, and your own play history with real "most played" counts.
 
 > **Read this first.** Deep Roon MCP is unofficial: it is not made, endorsed or supported by Roon Labs. It uses Roon's
 > internal protocol — the one Roon's own apps use — through Arthur Soares'
@@ -22,19 +22,19 @@ server of its own and sends nothing anywhere else. What you ask goes to your MCP
 
 ## Status
 
-Version 0.1: fifty tools.
+Version 0.2: fifty-one tools. Qobuz, TIDAL or both — whatever is signed in on your Core.
 
 **Reading** — changes nothing in Roon:
 
 | Tool | What it does |
 |---|---|
-| `roon_search` | Your library and Qobuz at once: albums (with format), artists, tracks |
-| `roon_new` | Qobuz's shelves: new, qobuzissimes, press awards, top, trending, ideal discography — by genre |
-| `roon_genres` | Qobuz's genres and their ids |
+| `roon_search` | Your library, Qobuz and TIDAL at once: albums (with format), artists, tracks — each says where it's from |
+| `roon_new` | Qobuz's shelves (new, qobuzissimes, press awards, top, trending, ideal discography) or TIDAL's (new, recommended, top, rising, masters; albums or tracks) — by genre |
+| `roon_genres` | Qobuz's genres and their ids, or TIDAL's genres and moods |
 | `roon_album` | An album's page: tracks, release dates, label, barcode, credits |
 | `roon_review` | The review Roon shows, in full, with its author |
 | `roon_bio` | The biography Roon shows, in full, with related artists |
-| `roon_artist` | An artist's discography, oldest first |
+| `roon_artist` | An artist's discography at Qobuz or TIDAL, oldest first |
 | `roon_status` | How Deep Roon MCP stands: Core, pairing, internal protocol, self-test, newer version |
 | `roon_zones` | Roon's zones and groups |
 | `roon_now_playing` | What plays in each zone, with the volume |
@@ -50,9 +50,10 @@ Version 0.1: fifty tools.
 | `roon_new_for_you` | New releases Roon picked for you |
 | `roon_mixes` | Today's Daily Mixes |
 | `roon_playlists`, `roon_playlist` | Your playlists, and one playlist's tracks |
-| `roon_favorites` | Albums with a heart in Roon, or your Qobuz favourites |
+| `roon_tidal_playlists` | TIDAL's playlists: its editorial shelves, by genre or mood, and your own TIDAL mixes |
+| `roon_favorites` | Albums with a heart in Roon, or your Qobuz or TIDAL favourites |
 | `roon_listen_later` | Your Listen Later list |
-| `roon_versions` | Other versions of an album: remasters, hi-res, in your library and at Qobuz |
+| `roon_versions` | Other versions of an album: remasters, hi-res, in your library and streaming |
 | `roon_similar` | More like this, for an album or an artist |
 | `roon_signal_path` | Roon's signal path for what plays: is it bit-perfect, what happens on the way |
 | `roon_dsp` | MUSE: the DSP set up for a zone |
@@ -72,7 +73,7 @@ Version 0.1: fifty tools.
 | `roon_group`, `roon_ungroup` | Group zones, and undo it |
 | `roon_sleep` | A sleep timer |
 | `roon_standby` | Put a device in standby, or wake it |
-| `roon_play_playlist` | A playlist on a zone, optionally shuffled |
+| `roon_play_playlist` | A playlist on a zone (also a TIDAL one), optionally shuffled |
 | `roon_play_mix` | One of today's Daily Mixes |
 
 **Changing your library or sound** — only on your request; each one reads the result back and says if Roon didn't follow:
@@ -81,7 +82,7 @@ Version 0.1: fifty tools.
 |---|---|
 | `roon_favorite` | A heart on an album or track, or off |
 | `roon_listen_later_set` | On or off the Listen Later list |
-| `roon_library_add` | A Qobuz album into your library |
+| `roon_library_add` | A Qobuz or TIDAL album into your library |
 | `roon_playlist_create` | A new playlist from tracks |
 | `roon_dsp_set` | MUSE on or off, one part on or off, or a preset |
 
@@ -103,7 +104,7 @@ The settings (Claude Desktop › Settings › Extensions › Deep Roon MCP):
 | Setting | What it does |
 |---|---|
 | Roon Core address | Empty: found on your network. Fill in the Core's address for another subnet or a private VPN (Tailscale) |
-| Essentials only | Seventeen tools instead of fifty, for small models |
+| Essentials only | Seventeen tools instead of fifty-one, for small models |
 | Use Roon's internal protocol | Off: only the official API — zones, playback, volume, grouping; no search, reviews, Focus or history |
 
 ### Other clients
@@ -115,6 +116,25 @@ Needs [Node.js](https://nodejs.org) 18 or newer. The package runs straight from 
 ```sh
 claude mcp add deep-roon -- npx -y deep-roon-mcp
 ```
+
+**ChatGPT desktop app and Codex** — they share one configuration. In the ChatGPT desktop app: Settings › MCP servers ›
+Add server, name `deep-roon`, type STDIO, command `npx`, arguments `-y deep-roon-mcp`; save, then Restart. Or from a
+terminal:
+
+```sh
+codex mcp add deep-roon -- npx -y deep-roon-mcp
+```
+
+or by hand in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.deep-roon]
+command = "npx"
+args = ["-y", "deep-roon-mcp"]
+# env = { ROON_HOST = "", DEEP_ROON_TOOLS = "", DEEP_ROON_INTERNAL = "" }
+```
+
+ChatGPT on the web can't run a server on your computer — use the desktop app.
 
 **Cursor, VS Code, Windsurf, Cline, LM Studio, Claude Desktop by hand …** — in the client's MCP configuration:
 
@@ -146,7 +166,8 @@ cd deep-roon-mcp && npm install && npm run build
 ## When something's wrong
 
 **"No Roon Core found" on a Mac:** macOS asks once whether the app may use the local network — for Claude Desktop that's
-Claude and Claude Helper. Allow both (System Settings › Privacy & Security › Local Network), then try again.
+Claude and Claude Helper, for the ChatGPT desktop app ChatGPT. Allow it (System Settings › Privacy & Security › Local
+Network), then try again.
 
 Ask your client to run **`roon_status`**: the Core it found, whether it's enabled in Roon, whether the internal protocol
 works, and a self-test of a few reads with the tools each stands for. After a Roon update a tool may break until Deep Roon
@@ -171,4 +192,4 @@ Arthur Soares for the protocol work (MIT, in `src/intern`). Roon Labs for allowi
 
 ## License
 
-Apache 2.0 — see `LICENSE` and `NOTICE`. Roon is a trademark of Roon Labs LLC; Qobuz of Xandrie SA.
+Apache 2.0 — see `LICENSE` and `NOTICE`. Roon is a trademark of Roon Labs LLC; Qobuz of Xandrie SA; TIDAL of TIDAL Music AS.

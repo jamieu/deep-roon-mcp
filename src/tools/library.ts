@@ -6,6 +6,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import * as fc from '../roon/focus';
 import * as home from '../roon/home';
 import * as more from '../roon/more';
+import * as tidal from '../roon/tidal';
 import { run } from './run';
 
 const READ = { readOnlyHint: true, openWorldHint: false } as const;
@@ -90,7 +91,7 @@ export function registerLibraryTools(server: McpServer): void {
 
   server.registerTool('roon_new_for_you', {
     title: 'New releases for you',
-    description: '"New releases for you" from Roon\'s Home: new albums Roon picked for this user, from the artists and music they listen to — personal, unlike roon_new (Qobuz\'s editorial shelf, the same for everyone). Use it for "my new releases", "what\'s new for me". Albums carry year, format, sometimes a `review`, and a `key`.',
+    description: '"New releases for you" from Roon\'s Home: new albums Roon picked for this user, from the artists and music they listen to — personal, unlike roon_new (the streaming services\' editorial shelf, the same for everyone). Use it for "my new releases", "what\'s new for me". Albums carry year, format, sometimes a `review`, and a `key`.',
     inputSchema: { limit: limit(100, 30), offset },
     annotations: READ,
   }, ({ limit: n, offset: o }) => run(() => home.newForYou(n ?? 30, o ?? 0)));
@@ -112,21 +113,32 @@ export function registerLibraryTools(server: McpServer): void {
   // ---- playlists ----
   server.registerTool('roon_playlists', {
     title: 'Playlists',
-    description: 'The playlists Roon knows: the user\'s own Roon playlists, Qobuz playlists and editorial ones — each with a `key` for roon_playlist and roon_play_playlist, the number of tracks, and whether it is read-only.',
+    description: 'The playlists in the user\'s Roon: their own Roon playlists, Qobuz and TIDAL playlists they added, and editorial ones — each with a `key` for roon_playlist and roon_play_playlist, the number of tracks, and whether it is read-only.',
     inputSchema: {},
     annotations: READ,
   }, () => run(() => more.playlists()));
 
+  server.registerTool('roon_tidal_playlists', {
+    title: 'TIDAL playlists',
+    description: 'TIDAL\'s playlists as Roon shows them, when TIDAL is signed in: the editorial shelves `new`, `recommended`, `exclusive`, `masters`, `popular`, `essential`, `hires_classics`, `recently_updated`, `forgotten_favorites`; the user\'s own TIDAL mixes `my_mixes` (My Daily Discovery, My Mix 1 …) and `history_mixes` (My Most Listened, the yearly ones …); or the playlists of one TIDAL `genre` or `mood` (ids from roon_genres with `service: "tidal"`). Each playlist has a `key` for roon_playlist (its tracks) and roon_play_playlist, a description, the number of tracks and a few of its artists.',
+    inputSchema: {
+      shelf: z.enum(Object.keys(tidal.PLAYLIST_SHELVES) as [string, ...string[]]).optional().describe('Default new.'),
+      genre: z.string().optional().describe('A TIDAL genre (roon_genres, service tidal).'), mood: z.string().optional().describe('A TIDAL mood (roon_genres, service tidal).'),
+      limit: limit(100, 20), offset,
+    },
+    annotations: READ,
+  }, ({ shelf, genre, mood, limit: n, offset: o }) => run(() => tidal.playlists(shelf ?? 'new', genre, mood, n ?? 20, o ?? 0)));
+
   server.registerTool('roon_playlist', {
     title: 'A playlist\'s tracks',
-    description: 'The tracks of one Roon playlist (by its `key` from roon_playlists, or its exact name), each with a `key` for roon_play_tracks.',
+    description: 'The tracks of one Roon playlist (by its `key` from roon_playlists or roon_tidal_playlists, or its exact name), each with a `key` for roon_play_tracks.',
     inputSchema: { key: z.string(), limit: limit(300, 100) },
     annotations: READ,
   }, ({ key, limit: n }) => run(() => more.playlist(key, n ?? 100)));
 
   server.registerTool('roon_play_playlist', {
     title: 'Play a playlist',
-    description: 'Play a Roon playlist on a Roon zone (`key` from roon_playlists, or its exact name). `mode`: now (default), next or queue. `shuffle: true` starts it shuffled from the very first track (Roon\'s own Shuffle button) — THE way to "shuffle a playlist": one call, no roon_settings, no skip. Only on an explicit request, never as a probe.',
+    description: 'Play a Roon playlist on a Roon zone (`key` from roon_playlists or roon_tidal_playlists, or its exact name). `mode`: now (default), next or queue. `shuffle: true` starts it shuffled from the very first track (Roon\'s own Shuffle button) — THE way to "shuffle a playlist": one call, no roon_settings, no skip. Only on an explicit request, never as a probe.',
     inputSchema: { key: z.string(), zone, mode, shuffle: z.boolean().optional() },
     annotations: PLAYS,
   }, ({ key, zone: zn, mode: m, shuffle }) => run(() => more.playPlaylist(key, zn, m ?? 'now', shuffle === true)));
@@ -141,8 +153,8 @@ export function registerLibraryTools(server: McpServer): void {
   // ---- favourites, Listen Later, the library ----
   server.registerTool('roon_favorites', {
     title: 'Favourite albums',
-    description: 'The user\'s favourite albums: `source: "roon"` (default) are the albums with a heart in Roon, newest first; `source: "qobuz"` the favourites at Qobuz. Albums carry a `key`.',
-    inputSchema: { source: z.enum(['roon', 'qobuz']).optional(), limit: limit(100, 50) },
+    description: 'The user\'s favourite albums: `source: "roon"` (default) are the albums with a heart in Roon, newest first; `source: "qobuz"` or `"tidal"` the favourites at that service. Albums carry a `key`.',
+    inputSchema: { source: z.enum(['roon', 'qobuz', 'tidal']).optional(), limit: limit(100, 50) },
     annotations: READ,
   }, ({ source, limit: n }) => run(() => more.favorites(source ?? 'roon', n ?? 50)));
 
@@ -169,7 +181,7 @@ export function registerLibraryTools(server: McpServer): void {
 
   server.registerTool('roon_library_add', {
     title: 'Add to the library',
-    description: 'Add a Qobuz album to the user\'s Roon library (the album `key` from a search, shelf or discography). Changes the library: only on an explicit request.',
+    description: 'Add a Qobuz or TIDAL album to the user\'s Roon library (the album `key` from a search, shelf or discography). Changes the library: only on an explicit request.',
     inputSchema: { key: z.string() },
     annotations: CHANGES,
   }, ({ key }) => run(() => more.libraryAdd(key)));
@@ -177,7 +189,7 @@ export function registerLibraryTools(server: McpServer): void {
   // ---- other versions, more like this ----
   server.registerTool('roon_versions', {
     title: 'Other versions',
-    description: 'The other versions Roon knows of an album (by album `key`): remasters, deluxe editions, mono/stereo, hi-res — `in_library` and `streaming` (at Qobuz), best format first, each with year, format, number of tracks and a `key`. For "is there a hi-res version", "which editions exist".',
+    description: 'The other versions Roon knows of an album (by album `key`): remasters, deluxe editions, mono/stereo, hi-res — `in_library` and `streaming` (at Qobuz or TIDAL — each row says its `source`), best format first, each with year, format, number of tracks and a `key`. For "is there a hi-res version", "which editions exist".',
     inputSchema: { key: z.string().describe('An album key.') },
     annotations: READ,
   }, ({ key }) => run(() => more.versions(key)));

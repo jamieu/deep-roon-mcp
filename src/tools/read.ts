@@ -1,4 +1,4 @@
-// The read-only tools: search, Qobuz's shelves and genres, album pages, reviews, biographies, discographies, zones,
+// The read-only tools: search, the streaming shelves and genres (Qobuz, TIDAL), album pages, reviews, biographies, discographies, zones,
 // what plays, and the play history. Nothing here changes anything in Roon.
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -9,6 +9,7 @@ import * as off from '../core/officialtools';
 import { run } from './run';
 
 const READ = { readOnlyHint: true, openWorldHint: false } as const;
+const service = z.enum(['qobuz', 'tidal']).optional().describe('qobuz or tidal — default: Qobuz when it is signed in in Roon, else TIDAL.');
 const limit = (max: number, dflt: number) => z.number().int().min(1).max(max).optional().describe(`How many (default ${dflt}, at most ${max}).`);
 
 export function registerReadTools(server: McpServer, internal = true): void {
@@ -16,32 +17,34 @@ export function registerReadTools(server: McpServer, internal = true): void {
   const reg = ((name: string, cfg: unknown, cb: unknown) => (R(name) ? (server.registerTool as Function).call(server, name, cfg, cb) : undefined)) as typeof server.registerTool;
   reg('roon_search', {
     title: 'Search Roon',
-    description: 'Search Roon — the user\'s Roon library and the whole Qobuz catalogue at once. Returns albums (with format, e.g. FLAC 96kHz 24bit), artists and tracks. `kind` narrows to album, track or artist — use `kind: "track"` with the song title (and artist) to find one specific track; a broad query without `kind` can fill up with artists. Albums and tracks carry a `key` for `roon_album`; artists carry a `key` for `roon_artist` and `roon_bio`. Albums say their `year`, and `in_library` when the user has them in Roon. Keys stay valid between calls.',
+    description: 'Search Roon — the user\'s Roon library and the catalogues of the streaming services signed in (Qobuz, TIDAL) at once; each row says its `source` (library, Qobuz, TIDAL). Returns albums (with format, e.g. FLAC 96kHz 24bit), artists and tracks. `kind` narrows to album, track or artist — use `kind: "track"` with the song title (and artist) to find one specific track; a broad query without `kind` can fill up with artists. Albums and tracks carry a `key` for `roon_album`; artists carry a `key` for `roon_artist` and `roon_bio`. Albums say their `year`, and `in_library` when the user has them in Roon. Keys stay valid between calls.',
     inputSchema: { query: z.string().min(1), kind: z.enum(['album', 'track', 'artist']).optional(), limit: limit(100, 30) },
     annotations: READ,
   }, ({ query, kind, limit: n }) => run(() => lib.search(query, n ?? 30, kind)));
 
   reg('roon_new', {
-    title: 'Qobuz shelves in Roon',
-    description: 'Qobuz\'s editorial shelves as Roon shows them (the same for everyone): `new` (new albums), `qobuzissimes`, `press_awards`, `top`, `trending`, `ideal_discography`. Albums carry their format and a `key` for `roon_album`. `genre` narrows a shelf to one or more Qobuz genres — ids from `roon_genres`; use it for "new jazz", "what\'s new in classical". `offset` pages through the shelf; `total` says how many there are.',
+    title: 'Streaming shelves in Roon',
+    description: 'The editorial shelves of Qobuz or TIDAL as Roon shows them (the same for everyone). Qobuz (`service: "qobuz"`): `new`, `qobuzissimes`, `press_awards`, `top`, `trending`, `ideal_discography` — albums; `genre` narrows a shelf to one or more Qobuz genre ids from `roon_genres`. TIDAL (`service: "tidal"`): `new`, `recommended`, `top`, `rising`, `masters` — albums, or tracks with `what: "tracks"` (not masters); `genre` (one TIDAL genre from `roon_genres`, e.g. "Jazz") gives TIDAL\'s page for that genre instead of a shelf. Use `genre` for "new jazz", "what\'s new in classical"; TIDAL\'s playlists are in roon_tidal_playlists. Albums carry their format and a `key` for `roon_album`; tracks a `key` for roon_play_tracks. `offset` pages through the shelf; `total` says how many there are.',
     inputSchema: {
-      section: z.enum(['new', 'qobuzissimes', 'press_awards', 'top', 'trending', 'ideal_discography']).optional(),
-      genre: z.string().regex(/^\s*\d+(\s*,\s*\d+)*\s*$/, 'Qobuz genre ids (numbers), comma-separated — see roon_genres').optional().describe('Qobuz genre id(s) from roon_genres, comma-separated.'),
+      service,
+      section: z.string().optional().describe('The shelf (default new) — see the list for each service.'),
+      genre: z.string().optional().describe('Qobuz: genre id(s) from roon_genres, comma-separated. TIDAL: one genre from roon_genres.'),
+      what: z.enum(['albums', 'tracks']).optional().describe('TIDAL only: albums (default) or tracks.'),
       limit: limit(100, 30), offset: z.number().int().min(0).optional(),
     },
     annotations: READ,
-  }, ({ section, genre, limit: n, offset }) => run(() => lib.section(section ?? 'new', n ?? 30, offset ?? 0, (genre ?? '').split(',').map((x) => x.trim()).filter(Boolean))));
+  }, ({ service: sv, section, genre, what, limit: n, offset }) => run(() => lib.section(section ?? 'new', n ?? 30, offset ?? 0, (genre ?? '').split(',').map((x) => x.trim()).filter(Boolean), sv, what ?? 'albums')));
 
   reg('roon_genres', {
-    title: 'Qobuz genres',
-    description: 'The genres of Qobuz with their ids, for the `genre` filter of `roon_new`. Without `parent`: the main genres (names as Qobuz gives them in the account\'s language). With `parent` (a genre id): its sub-genres, e.g. the kinds of jazz.',
-    inputSchema: { parent: z.string().optional().describe('A genre id, to list its sub-genres.') },
+    title: 'Streaming genres',
+    description: 'The genres of Qobuz or TIDAL, for the `genre` filter of `roon_new` (and, for TIDAL, of `roon_tidal_playlists`). Qobuz: the main genres with their ids (names in the account\'s language); with `parent` (a genre id) its sub-genres, e.g. the kinds of jazz. TIDAL: its genres and its moods (Relax, Focus …), each with an `id` to pass on.',
+    inputSchema: { service, parent: z.string().optional().describe('Qobuz: a genre id, to list its sub-genres.') },
     annotations: READ,
-  }, ({ parent }) => run(() => lib.genres(parent)));
+  }, ({ service: sv, parent }) => run(() => lib.genres(parent, sv)));
 
   reg('roon_album', {
     title: 'Album page',
-    description: 'One album in Roon, by its `key` (from roon_search, roon_new, roon_artist): the album with year, format, label and whether it is in the library, its genres, release date (and the date of this edition), barcode and — when Roon has them — catalogue number and country, its main artist(s) with a `key` for `roon_artist` / `roon_bio`, and every track with its own `key`. A Qobuz album that is also in the library comes back as the library copy (its key may differ; both work). `credits: true` adds who played, produced, engineered and wrote, grouped by role — Roon\'s own data.',
+    description: 'One album in Roon, by its `key` (from roon_search, roon_new, roon_artist): the album with year, format, label and whether it is in the library, its genres, release date (and the date of this edition), barcode and — when Roon has them — catalogue number and country, its main artist(s) with a `key` for `roon_artist` / `roon_bio`, and every track with its own `key`. A streaming album that is also in the library comes back as the library copy (its key may differ; both work). `credits: true` adds who played, produced, engineered and wrote, grouped by role — Roon\'s own data.',
     inputSchema: { key: z.string().describe('An album key.'), credits: z.boolean().optional() },
     annotations: READ,
   }, ({ key, credits }) => run(() => lib.album(key, credits === true)));
@@ -62,10 +65,10 @@ export function registerReadTools(server: McpServer, internal = true): void {
 
   reg('roon_artist', {
     title: 'Discography',
-    description: 'An artist\'s discography in Roon: the main albums Qobuz has, oldest first, each with year, format and a `key` for `roon_album`. The artist `key` comes from roon_search (`kind: "artist"`) or from the `artists` of roon_album. Use this for "the album before/after …", "their debut", "what else did they make" — don\'t answer discography questions from memory. The year is the original release where Roon knows it; reissues and compilations are in the list too.',
-    inputSchema: { key: z.string().describe('An artist key.') },
+    description: 'An artist\'s discography in Roon: the main albums Qobuz (or, with `service: "tidal"`, TIDAL) has, oldest first, each with year, format and a `key` for `roon_album`. The artist `key` comes from roon_search (`kind: "artist"`) or from the `artists` of roon_album. Use this for "the album before/after …", "their debut", "what else did they make" — don\'t answer discography questions from memory. The year is the original release where Roon knows it; reissues and compilations are in the list too.',
+    inputSchema: { key: z.string().describe('An artist key.'), service },
     annotations: READ,
-  }, ({ key }) => run(() => lib.discography(key)));
+  }, ({ key, service: sv }) => run(() => lib.discography(key, sv)));
 
   reg('roon_zones', {
     title: 'Roon zones',

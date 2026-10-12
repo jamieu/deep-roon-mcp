@@ -16,7 +16,7 @@ import { findTarget, shutdown } from './core/session';
 import { log } from './core/log';
 import { version } from '../package.json';
 
-const INSTRUCTIONS = `Deep Roon MCP connects to the user's own Roon Core (music player software, with Qobuz behind it when the user has it).
+const INSTRUCTIONS = `Deep Roon MCP connects to the user's own Roon Core (music player software, with Qobuz and/or TIDAL behind it when the user has them).
 - Albums, tracks and artists come with a \`key\`; keys stay valid between calls — no need to search again.
 - Reviews and biographies are Roon's own texts: when asked for them, show them in full with the author's name.
 - What plays changes all the time: read roon_now_playing afresh before describing it.

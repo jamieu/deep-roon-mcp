@@ -9,7 +9,9 @@ import { withCore, fresh, RoonError } from '../core/session';
 import { officialZone } from '../core/official';
 import { log } from '../core/log';
 import { Any, C, albumRow, clean, dotnetDate, field, flag, items, localTime, obj, resultRow, short, untilField, untilLoaded, wait } from './graph';
-import { findAlbum, findTracks, fullAlbum, performer } from './library';
+import { findAlbum, findTracks, fullAlbum, performer, shelf, streaming } from './library';
+import * as tidal from './tidal';
+import { playlistKey } from './tidal';
 import { currentEndpoints, findZone, zoneNames } from './zones';
 import { How, PRIORITY, outputsOf, playParams, started } from './control';
 
@@ -21,17 +23,18 @@ const profileObject = (c: C) => {
 const decoded = (c: C, payload: Buffer) => (payload.length ? c.graph.decodeReturnValue(Uint8Array.from(payload)) : null);
 
 // ---- playlists ----
-const PLAYLIST_KIND: Record<number, string> = { 1: 'itunes', 5: 'roon', 6: 'roon (read-only)', 10: 'tidal', 11: 'file', 12: 'qobuz', 13: 'roon editorial', 15: 'smart' };
+const PLAYLIST_KIND: Record<number, string> = { 1: 'itunes', 5: 'roon', 6: 'roon (read-only)', 10: 'TIDAL', 11: 'file', 12: 'qobuz', 13: 'roon editorial', 15: 'smart' };
 function allPlaylists(c: C) {
   const service = c.graph.findByType('Playlists')[0];
   if (!service) throw new RoonError('Roon gives no playlists service', 'unavailable');
   return { service, list: items(c, field(service, 'AllPlaylists')) };
 }
-const playlistKey = (p: Any) => { const id = field(p, 'PlaylistId'); return Buffer.isBuffer(id) ? id.toString('hex') : String(id ?? ''); };
-function findPlaylist(c: C, key: string) {
+/** A playlist by key or exact name: one of Roon's playlists, else a TIDAL playlist from roon_tidal_playlists. */
+async function findPlaylist(c: C, key: string) {
   const { list } = allPlaylists(c);
-  const p = list.find((x) => playlistKey(x) === key) ?? list.find((x) => String(field(x, 'Name') ?? '').toLowerCase() === key.toLowerCase());
-  if (!p) throw new RoonError('Unknown playlist — read roon_playlists for the keys', 'not_found');
+  const p = list.find((x) => playlistKey(x) === key) ?? list.find((x) => String(field(x, 'Name') ?? '').toLowerCase() === key.toLowerCase())
+    ?? await tidal.findPlaylist(c, key);
+  if (!p) throw new RoonError('Unknown playlist — read roon_playlists (or roon_tidal_playlists) for the keys', 'not_found');
   return p;
 }
 export async function playlists() {
@@ -41,7 +44,7 @@ export async function playlists() {
 }
 export async function playlist(key: string, limit: number) {
   return withCore(async (c) => {
-    const p = findPlaylist(c, key);
+    const p = await findPlaylist(c, key);
     const res = await c.call('Playlist', 'GetItems', [{ type: 'ResultCallback<Query<PlaylistItem>>', name: 'cb_result' }], Buffer.alloc(0), p.oid);
     if (!res.success) throw new RoonError(`Roon refused the playlist (${res.status})`);
     const v = decoded(c, res.payload);
@@ -61,7 +64,7 @@ export async function playlist(key: string, limit: number) {
 export async function playPlaylist(key: string, zoneName: string, how: How, shuffle: boolean) {
   const p = PRIORITY[how];
   const r = await withCore(async (c) => {
-    const pl = findPlaylist(c, key); const z = findZone(c, zoneName);
+    const pl = await findPlaylist(c, key); const z = findZone(c, zoneName);
     const args = Buffer.concat([buildArgs([Arg.ref(z.oid), Arg.sooid(c.profile())]), playParams(c, p, shuffle), buildArgs([Arg.ref(pl.oid), Arg.ref(0n)])]);
     const res = await c.call('Transport', 'PlayPlaylist',
       [{ type: 'Zone', name: 'zone' }, { type: 'Sooid', name: 'profileid' }, { type: 'PlayParameters', name: 'parameters' }, { type: 'Playlist', name: 'playlist' },
@@ -91,7 +94,7 @@ export async function playlistCreate(name: string, keys: string[]) {
 
 // ---- favourites, Listen Later, the library ----
 /** A query on the library's albums (as in focus.ts), for the albums with a heart. */
-export async function favorites(source: 'roon' | 'qobuz', limit: number) {
+export async function favorites(source: 'roon' | 'qobuz' | 'tidal', limit: number) {
   const n = Math.min(Math.max(1, limit), 100);
   if (source === 'roon') {
     const { library } = await import('./focus');
@@ -99,15 +102,9 @@ export async function favorites(source: 'roon' | 'qobuz', limit: number) {
     return { source, total: r.total, rows: r.rows };
   }
   return withCore(async (c) => {
-    const q = c.graph.findByType('Qobuz')[0];
-    if (!q) throw new RoonError('This Roon Core has no Qobuz service', 'unavailable');
-    const res = await c.call('Qobuz', 'GetFavoriteAlbums', [{ type: 'int', name: 'offset' }, { type: 'int', name: 'count' }, { type: 'ResultCallback<PartialList<AlbumLite>>', name: 'cb_result' }],
-      buildArgs([Arg.int(0), Arg.int(n)]), q.oid);
-    if (!res.success) throw new RoonError(`Roon refused the Qobuz favourites (${res.status})`);
-    const { partialList } = await import('./graph');
-    const list = partialList(c, c.graph.decodeReturnValue(Uint8Array.from(res.payload)));
-    await untilLoaded(c, list.items);
-    return { source, total: list.total, rows: list.items.map((x) => obj(c, x)).filter(Boolean).map((o) => albumRow(c, o)) };
+    const { service, o } = streaming(c, source);
+    const list = await shelf(c, service, o, 'GetFavoriteAlbums', 'AlbumLite', 0, n);
+    return { source, total: list.total, rows: list.items.map((x) => albumRow(c, x)) };
   });
 }
 
@@ -176,7 +173,7 @@ export async function listenLaterSet(kind: 'album' | 'track', key: string, on: b
              note: now === undefined ? 'Roon said ok; it couldn\'t be read back' : now !== on ? 'Roon said ok, but nothing changed' : undefined };
   });
 }
-/** A (Qobuz) album into the library (Library::AddToLibrary — no answer), then read back whether it's in. */
+/** A (Qobuz or TIDAL) album into the library (Library::AddToLibrary — no answer), then read back whether it's in. */
 export async function libraryAdd(key: string) {
   return withCore(async (c) => {
     const album = await findAlbum(c, key);
