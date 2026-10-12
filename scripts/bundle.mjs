@@ -24,7 +24,12 @@ const manifest = {
   display_name: 'Deep Roon MCP',
   version: pkg.version,
   description: 'Talk to your Roon Core: search your library and Qobuz, read the reviews and biographies Roon shows, Focus, Daily Picks, your history — and play on your zones.',
-  long_description: 'Unofficial. Uses Roon\'s internal protocol (through Arthur Soares\' roon-api-reverse-engineering, which Roon Labs allows for personal use) and the official extension API. Runs on your computer and talks only to your own Roon Core on your network. Enable it once in Roon: Settings › Extensions.',
+  long_description: [
+    '**Unofficial.** Deep Roon MCP is not made, endorsed or supported by Roon Labs.',
+    'It reaches your Roon Core two ways: Roon\'s official extension API (zones, playback, volume, grouping), and Roon\'s internal protocol — the one Roon\'s own apps use — through Arthur Soares\' [roon-api-reverse-engineering](https://github.com/arthursoares/roon-api-reverse-engineering). Roon Labs allows that protocol for tinkering with your own system, but it is not hardened for third-party use, any Roon update can change it, and misuse can cause memory or compute leaks in the Core. Read [Arthur\'s thread on the Roon Community](https://community.roonlabs.com/t/reverse-engineering-the-roon-desktop-clients-local-protocol-typescript-client-docs/321731) before you use it.',
+    '**Use it entirely at your own risk.** It comes without any warranty (Apache 2.0). If your Core misbehaves, quit Deep Roon MCP and restart the Core. Report problems on GitHub, not to Roon\'s support. Keep port 9332 on your own network — never forward it to the internet. Switch "Use Roon\'s internal protocol" off and only the official API is used.',
+    'Runs on your computer and talks only to your own Roon Core on your network. Enable it once in Roon: Settings › Extensions.',
+  ].join('\n\n'),
   author: { name: 'René Bouwmeester', url: 'https://github.com/renebouwmeester' },
   homepage: pkg.homepage,
   repository: { type: 'git', url: 'https://github.com/renebouwmeester/deep-roon-mcp' },

@@ -4,11 +4,18 @@ The parts of Roon the official API doesn't reach, for Claude and any other MCP c
 shows, search across your library and Qobuz at once, Qobuz's editorial shelves, album pages with credits, artist
 discographies, and your own play history with real "most played" counts.
 
-> **Read this first.** Deep Roon MCP is unofficial. It uses Roon's internal protocol, through Arthur Soares'
+> **Read this first.** Deep Roon MCP is unofficial: it is not made, endorsed or supported by Roon Labs. It uses Roon's
+> internal protocol — the one Roon's own apps use — through Arthur Soares'
 > [roon-api-reverse-engineering](https://github.com/arthursoares/roon-api-reverse-engineering), which Roon Labs allows
-> for personal use. Brian Luczkiewicz (Roon Labs) on that protocol: it is *"not hardened for 3rd party use"* — keep port
-> 9332 on your own network, never forward it to the internet. A Roon update can break a tool until Deep Roon MCP is
-> updated. It is not made or supported by Roon Labs.
+> for tinkering with your own system. Brian Luczkiewicz (Roon Labs) on that protocol: it is *"not hardened for 3rd party
+> use"*, it can change with any Roon update, and misuse can cause memory or compute leaks in the Core. Read
+> [Arthur's thread on the Roon Community](https://community.roonlabs.com/t/reverse-engineering-the-roon-desktop-clients-local-protocol-typescript-client-docs/321731)
+> before you use it.
+>
+> **Use it entirely at your own risk.** It comes without any warranty (see the licence). If your Core misbehaves, quit
+> Deep Roon MCP and restart the Core. Report problems here, not to Roon's support. Keep port 9332 on your own network,
+> never forward it to the internet. A Roon update can break a tool until Deep Roon MCP is updated. With the internal
+> protocol switched off (see the settings below) only Roon's official extension API is used.
 
 **What stays at home.** Deep Roon MCP runs on your computer and talks to your Roon Core over your own network. It has no
 server of its own and sends nothing anywhere else. What you ask goes to your MCP client's model like any other question.
