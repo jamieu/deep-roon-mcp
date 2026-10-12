@@ -75,7 +75,13 @@ export async function nowPlaying() {
       if (r.state === 'stopped') return r;            // what still "stands" in a stopped zone is old news
       const np = obj(c, field(z, 'NowPlaying'));
       const tr = obj(c, field(items(c, field(np, 'Tracks'))[0], 'Track'));
-      if (tr && field(tr, 'Title')) {
+      // During a stream through Roon's audio input the graph can still hold the last track of Roon's own queue (12 Oct
+      // 2026: "Supreme" in the graph while Basso played "People Like You" into the zone): when the official lines name
+      // something else than the graph's track, the official lines win.
+      const lines = off?.now_playing?.three_line;
+      const t = String(field(tr, 'Title') ?? '').toLowerCase(), l1 = String(lines?.line1 ?? '').toLowerCase();
+      const stream = !!l1 && !!t && !l1.includes(t) && !t.includes(l1);
+      if (tr && field(tr, 'Title') && !stream) {
         const al = obj(c, field(tr, 'Album'));
         r.title = field(tr, 'Title'); r.artist = clean(field(al, 'PerformedBy')); r.album = field(al, 'Title');
         const f = field(tr, 'Format'); if (f) r.format = f;
@@ -83,12 +89,11 @@ export async function nowPlaying() {
       } else {
         // A stream through Roon's audio input (another app feeding Roon) or a radio station: no track in the graph, but
         // the official API has the lines Roon shows.
-        const lines = off?.now_playing?.three_line;
         if (lines?.line1) { r.title = lines.line1; if (lines.line2) r.artist = lines.line2; if (lines.line3) r.album = lines.line3; r.source = 'a stream into Roon (audio input or radio)'; }
         else r.line = 'a stream Roon receives from elsewhere (no track details)';
       }
       const pos = field(z, 'SeekPosition'); if (typeof pos === 'number') r.position = duration(pos);
-      const left = field(obj(c, field(z, 'Queue')), 'TrackCountRemaining'); if (typeof left === 'number') r.tracks_left_in_queue = left;
+      const left = field(obj(c, field(z, 'Queue')), 'TrackCountRemaining'); if (typeof left === 'number' && !r.source) r.tracks_left_in_queue = left;
       return r;
     });
     return { zones: out };
