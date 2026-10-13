@@ -186,7 +186,7 @@ export async function toplevelGenres(c: C): Promise<Set<string>> {
 export async function library(f: Filters, sort: string | undefined, ascending: boolean | undefined, limit: number, offset: number) {
   return withCore(async (c) => {
     const { members, matched } = await focusMembers(c, f);
-    members.push(...ordering(c, 'Album', ALBUM_ORDER, sort, ascending, ['added', 'most_played', 'popular']));
+    members.push(...ordering(c, 'Album', ALBUM_ORDER, sort, ascending, ['added', 'released', 'most_played', 'popular']));   // newest first (13 Oct 2026)
     const out = await virtualQuery(c, 'Album', members, limit, offset, (o) => albumRow(c, o));
     return { ...out, matched };
   });
@@ -230,7 +230,7 @@ export async function tracks(f: TrackFilters, sort: string | undefined, ascendin
     const { members, matched } = await focusMembers(c, { genre: f.genre, label: f.label, artist: f.artist, composer: f.composer, favorites: f.favorites, live: f.live, year_from: f.year_from, year_to: f.year_to,
       played_within_days: f.played_within_days, not_played_within_days: f.not_played_within_days, added_within_days: f.added_within_days, text: f.text }, ['artist', 'composer']);
     if (f.title) members.push(text('TrackTitleTextFilter', f.title));
-    members.push(...ordering(c, 'Track', TRACK_ORDER, sort, ascending, ['most_played', 'last_played', 'added', 'popular']));
+    members.push(...ordering(c, 'Track', TRACK_ORDER, sort, ascending, ['released', 'most_played', 'last_played', 'added', 'popular']));
     const out = await virtualQuery(c, 'Track', members, limit, offset, (o) => resultRow(c, o));
     return { ...out, matched };
   });
