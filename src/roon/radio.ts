@@ -19,7 +19,9 @@ function stationRow(c: C, o: Any): Any {
   const loc = field(o, 'Location'); if (loc) r.location = loc;
   const d = field(o, 'Description'); if (d) r.description = String(d).slice(0, 200);
   if (field(o, 'IsInLibrary') === true) r.in_library = true;
+  // A directory station's logo is a plain https picture at Roon's radio service; an own station's is a key at the Core.
   const img = imageKey(c, o); if (img) r.image = img;
+  const url = field(obj(c, field(o, 'Image')), 'Url'); if (typeof url === 'string' && /^https?:/.test(url)) r.image_url = url;
   return r;
 }
 const categoryRow = (c: C, o: Any) => ({ key: hex(field(o, 'CategoryId')), name: field(o, 'Name') ?? '' });
