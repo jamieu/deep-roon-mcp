@@ -31,6 +31,10 @@ export const flag = (v: Any): boolean => v === true || (Buffer.isBuffer(v) && v.
 export function imageKeys(c: C, o: Any, name = 'Images', max = 4): string[] {
   return items(c, field(o, name)).map((im) => { const m = /^broker:\/\/\/image\/([^.]+)\./.exec(String(field(im, 'Url') ?? '')); return m ? m[1] : ''; }).filter(Boolean).slice(0, max);
 }
+/** The plain https pictures of an object's image list (TIDAL playlists: resources.tidal.com), up to `max`. */
+export function imageUrls(c: C, o: Any, name = 'Images', max = 4): string[] {
+  return items(c, field(o, name)).map((im) => String(field(im, 'Url') ?? '')).filter((u) => /^https?:\/\//.test(u)).slice(0, max);
+}
 export function imageKey(c: C, o: Any, name = 'Image'): string | undefined {
   const url = field(obj(c, field(o, name)), 'Url');
   const m = /^broker:\/\/\/image\/([^.]+)\./.exec(String(url ?? ''));
