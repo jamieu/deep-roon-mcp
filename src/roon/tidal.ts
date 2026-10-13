@@ -2,7 +2,8 @@
 // ordinary Roon playlists (Playlist::GetItems and Transport::PlayPlaylist take them — measured 12 Oct 2026), but they
 // aren't in Roon's list of playlists: a key is remembered with the shelf it came from, to find it again later.
 import { withCore, RoonError } from '../core/session';
-import { Any, C, clean, duration, field, obj, strings } from './graph';
+import { isRef } from '../intern';
+import { Any, C, clean, duration, field, imageKeys, obj, strings, untilLoaded } from './graph';
 import { shelf, streaming, tidalPick, tidalStruct } from './library';
 
 export const PLAYLIST_SHELVES: Record<string, string> = {
@@ -38,9 +39,13 @@ export async function playlists(shelfName: string, genre: string | undefined, mo
   return withCore(async (c) => {
     const w: Where = { shelf: genre ? 'genre' : mood ? 'mood' : shelfName, genre, mood, offset: Math.max(0, offset), count: Math.min(Math.max(1, limit), 100) };
     const list = await fetch(c, w);
+    // The covers come after the playlists themselves: wait for the Images lists, then for the images (13 Oct 2026).
+    await untilLoaded(c, list.map((p) => field(p, 'Images')).filter(isRef), 1500);
+    await untilLoaded(c, list.flatMap((p) => (obj(c, field(p, 'Images'))?.fields?.$items ?? []) as Any[]).filter(isRef), 1500);
     const rows = list.map((p) => {
       const key = playlistKey(p); seen.set(key, w);
       const r: Any = { key, name: String(field(p, 'Name') ?? '').trim() };
+      const imgs = imageKeys(c, p); if (imgs.length) r.images = imgs;   // the playlist's covers, for a tile (13 Oct 2026)
       const d = field(p, 'Description'); if (d) r.description = clean(d).replace(/\s+/g, ' ').trim().slice(0, 240);
       const n = field(p, 'TrackCount') ?? field(p, 'ItemCount'); if (typeof n === 'number') r.tracks = n;
       const l = field(p, 'LengthSeconds'); if (typeof l === 'number') r.length = duration(l);

@@ -7,7 +7,7 @@ import { BinaryWriter } from '../intern/proto/writer';
 import { formatMethodSignature } from '../intern/catalog/signature';
 import { structSchema } from '../intern/generated/struct-schemas';
 import { withCore, RoonError } from '../core/session';
-import { Any, C, albumRow, duration, field, items, obj, resultRow, short, untilField, untilLoaded, wait, yearOf } from './graph';
+import { Any, C, albumRow, duration, field, imageKeys, items, obj, resultRow, short, untilField, untilLoaded, wait, yearOf } from './graph';
 import { choose, entityText } from './library';
 
 export interface Filters {
@@ -262,6 +262,7 @@ function workRow(c: C, w: Any): Any {
   const y = yearOf(field(w, 'CompositionEndDate')) ?? yearOf(field(w, 'CompositionStartDate')); if (y) r.year = y;
   const l = field(w, 'LengthSeconds'); if (typeof l === 'number' && l > 0) r.length = duration(l);
   const n = field(w, 'PerformanceCount'); if (typeof n === 'number') r.performances = n;
+  const imgs = imageKeys(c, w); if (imgs.length) r.images = imgs;   // the covers of its recordings (13 Oct 2026)
   return r;
 }
 

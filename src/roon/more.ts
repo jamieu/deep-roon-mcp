@@ -8,7 +8,7 @@ import { formatMethodSignature } from '../intern/catalog/signature';
 import { withCore, fresh, RoonError } from '../core/session';
 import { officialZone } from '../core/official';
 import { log } from '../core/log';
-import { Any, C, albumRow, clean, dotnetDate, field, flag, items, localTime, obj, resultRow, short, untilField, untilLoaded, wait } from './graph';
+import { Any, C, albumRow, clean, dotnetDate, duration, field, flag, imageKeys, items, localTime, obj, resultRow, short, untilField, untilLoaded, wait } from './graph';
 import { findAlbum, findTracks, fullAlbum, performer, shelf, streaming } from './library';
 import * as tidal from './tidal';
 import { playlistKey } from './tidal';
@@ -38,9 +38,16 @@ async function findPlaylist(c: C, key: string) {
   return p;
 }
 export async function playlists() {
-  return withCore(async (c) => ({ playlists: allPlaylists(c).list.map((p) => ({
-    key: playlistKey(p), name: field(p, 'Name') ?? '', kind: PLAYLIST_KIND[field(p, 'Type')] ?? String(field(p, 'Type') ?? ''),
-    tracks: field(p, 'TrackCount') ?? field(p, 'ItemCount') ?? undefined, read_only: field(p, 'IsReadOnly') === true || undefined })) }));
+  return withCore(async (c) => ({ playlists: allPlaylists(c).list.map((p) => {
+    const r: Any = { key: playlistKey(p), name: field(p, 'Name') ?? '', kind: PLAYLIST_KIND[field(p, 'Type')] ?? String(field(p, 'Type') ?? ''),
+      tracks: field(p, 'TrackCount') ?? field(p, 'ItemCount') ?? undefined, read_only: field(p, 'IsReadOnly') === true || undefined };
+    // For a tile (13 Oct 2026): the covers Roon shows on the playlist, its length, a few of its artists and its description.
+    const imgs = imageKeys(c, p); if (imgs.length) r.images = imgs;
+    const l = field(p, 'LengthSeconds'); if (typeof l === 'number' && l > 0) r.length = duration(l);
+    const names = (obj(c, field(p, 'SampleArtistNames'))?.fields?.$items ?? []).filter((x: Any) => typeof x === 'string').slice(0, 4); if (names.length) r.artists = names;
+    const d = field(p, 'Description'); if (d) r.description = clean(d).replace(/\s+/g, ' ').slice(0, 240);
+    return r;
+  }) }));
 }
 export async function playlist(key: string, limit: number) {
   return withCore(async (c) => {

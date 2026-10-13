@@ -4,7 +4,7 @@ import { Arg, buildArgs } from '../intern/proto/serializer';
 import { BinaryWriter } from '../intern/proto/writer';
 import { withCore, RoonError } from '../core/session';
 import { log } from '../core/log';
-import { Any, C, albumRow, clean, field, items, obj, resultRow, strings, untilLoaded } from './graph';
+import { Any, C, albumRow, clean, field, imageKey, imageKeys, items, obj, resultRow, strings, untilLoaded } from './graph';
 import { toplevelGenres } from './focus';
 import { findZone } from './zones';
 import { How, PRIORITY, playParams, started } from './control';
@@ -84,6 +84,9 @@ export async function mixes() {
     const r: Any = { key: mixKey(m), kind: gd && field(gd, 'GenreName') ? 'genre' : 'artist', name: mixName(c, m) };
     const ts = (obj(c, field(pd ?? gd, 'Touchstones'))?.fields?.$items ?? []).filter((x: Any) => typeof x === 'string').map(clean).slice(0, 8);
     if (ts.length) r.touchstones = ts;
+    // The picture of a mix (13 Oct 2026): the artist's photo (or avatar) for an artist mix, the genre's images for a genre mix.
+    const img = pd ? (imageKey(c, pd, 'Photo') ?? imageKey(c, pd, 'Avatar')) : undefined; if (img) r.image = img;
+    const imgs = gd ? imageKeys(c, gd) : []; if (imgs.length) r.images = imgs;
     return r;
   }) }));
 }
