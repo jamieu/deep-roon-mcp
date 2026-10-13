@@ -2,17 +2,30 @@
 // over all of it. The export wants a graph without earlier plays: a fresh connection, closed again afterwards.
 import { exportPlayHistory } from '../intern';
 import { withCore, fresh, closeSoon } from '../core/session';
-import { clean, localTime } from './graph';
+import { Any, clean, field, imageKey, localTime, obj } from './graph';
+import { findTracks } from './library';
 
 export async function history(limit: number) {
   return withCore(async (first) => {
     const c = first.graph.findByType('HistoryPlay').length > 0 ? await fresh() : first;
     const out = await exportPlayHistory(c, { limit: Math.min(Math.max(0, limit), 500) });
+    // The album and its cover per play (13 Oct 2026, Rosso's history): the tracks by their keys, in one question — at most
+    // a hundred, the newest first; a key Roon no longer knows is skipped.
+    const keys = [...new Set(out.events.map((e) => e.roonTrackId).filter((k): k is string => !!k))].slice(0, 100);
+    const byKey = new Map<string, Any>();
+    if (keys.length) {
+      const tracks = await findTracks(c, keys, true).catch(() => [] as Any[]);
+      for (const t of tracks) if (t) byKey.set(String(field(t, 'TrackId')), t);
+    }
     closeSoon('after the history');
     return {
       total: out.total ?? null,
-      plays: out.events.map((e) => ({ at: localTime(e.playedAt), title: e.title, artist: clean(e.artist), album: e.album ?? undefined, played_pct: e.completionPct ?? undefined,
-                                      track_key: e.roonTrackId ?? undefined })),   // for roon_play_tracks (13 Oct 2026, Rosso's history)
+      plays: out.events.map((e) => {
+        const r: Any = { at: localTime(e.playedAt), title: e.title, artist: clean(e.artist), album: e.album ?? undefined, played_pct: e.completionPct ?? undefined, track_key: e.roonTrackId ?? undefined };
+        const t = e.roonTrackId ? byKey.get(e.roonTrackId) : undefined;
+        if (t) { const al = obj(c, field(t, 'Album')); const ak = field(al, 'AlbumId'); if (ak !== undefined && ak !== null) r.album_key = String(ak); const img = imageKey(c, al); if (img) r.image = img; }
+        return r;
+      }),
     };
   });
 }

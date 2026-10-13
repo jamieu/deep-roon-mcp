@@ -156,7 +156,7 @@ export async function findAlbum(c: C, key: string): Promise<Any> {
 }
 
 /** The tracks for a list of keys, in that order; an unknown key gives an error naming it. */
-export async function findTracks(c: C, keys: string[]): Promise<Any[]> {
+export async function findTracks(c: C, keys: string[], lenient = false): Promise<Any[]> {
   const look = () => { const all = [...c.graph.objects.values()].filter((o) => /\.Track(Lite)?$/.test(o.typeName) && field(o, 'Title') !== undefined); return keys.map((k) => all.find((o) => String(field(o, 'TrackId') ?? '') === k)); };
   let tracks = look();
   const missing = keys.filter((_, i) => !tracks[i]);
@@ -168,6 +168,7 @@ export async function findTracks(c: C, keys: string[]): Promise<Any[]> {
     tracks = look();
   }
   const gone = keys.filter((_, i) => !tracks[i]);
+  if (gone.length && lenient) return tracks;   // nulls where Roon no longer knows the key
   if (gone.length) throw new RoonError(`Roon doesn't know ${gone.length} of the ${keys.length} tracks (keys ${gone.join(', ')})`, 'not_found');
   return tracks;
 }
