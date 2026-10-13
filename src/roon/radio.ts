@@ -4,6 +4,7 @@
 import { isRef } from '../intern';
 import { Arg, buildArgs } from '../intern/proto/serializer';
 import { BinaryWriter } from '../intern/proto/writer';
+import { formatMethodSignature } from '../intern/catalog/signature';
 import { withCore, RoonError } from '../core/session';
 import { log } from '../core/log';
 import { Any, C, field, imageKey, items, obj, untilLoaded, wait } from './graph';
@@ -105,4 +106,28 @@ export async function playRadio(key: string, zoneName: string) {
     return { zone: z.name, station: field(st, 'Name') };
   });
   return { ok: true, ...r, ...(await started(r.zone, 0)) };
+}
+
+/** A station into My Live Radio, or out of it (Radio::AddToLibrary / RemoveFromLibrary), read back through GetChannel. */
+export async function radioFavorite(key: string, on: boolean) {
+  return withCore(async (c) => {
+    const st = await findStation(c, key);
+    // AddToLibrary answers; RemoveFromLibrary doesn't (measured 13 Oct 2026: the request timed out while the station was gone),
+    // so that one goes without waiting and the read-back tells.
+    const args = buildArgs([Arg.collection([buildArgs([Arg.ref(st.oid)])])]);
+    if (on) {
+      const res = await c.call('Radio', 'AddToLibrary', [{ type: 'IList<Channel>', name: 'channels' }, { type: 'ResultCallback', name: 'cb_result' }], args, radioOid(c));
+      if (!res.success) throw new RoonError(`Roon refused (${res.status})`);
+    } else {
+      c.remoting.callMethodNoReply(radioOid(c), formatMethodSignature('Radio', 'RemoveFromLibrary', [{ type: 'IList<Channel>', name: 'channels' }, { type: 'ResultCallback', name: 'cb_result' }]), args);
+    }
+    log(`radio_favorite: ${field(st, 'Name')} ${on ? '+' : '−'}`);
+    await wait(800);
+    // Read back from the list itself: the channel object's IsInLibrary lags behind a removal (measured).
+    const id = hex(field(st, 'ChannelId'));
+    const mine = await myStations(c).catch(() => null);
+    const now = mine ? mine.some((x) => hex(field(x, 'ChannelId')) === id) : undefined;
+    return { ok: now === undefined || now === on, station: field(st, 'Name'), in_library: now ?? on,
+             note: now === undefined ? 'Roon said ok; it couldn\'t be read back' : now !== on ? 'Roon said ok, but nothing changed' : undefined };
+  });
 }

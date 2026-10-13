@@ -22,7 +22,7 @@ server of its own and sends nothing anywhere else. What you ask goes to your MCP
 
 ## Status
 
-Version 0.4: fifty-six tools. Qobuz, TIDAL or both — whatever is signed in on your Core.
+Version 0.4: fifty-seven tools. Qobuz, TIDAL or both — whatever is signed in on your Core.
 
 **Reading** — changes nothing in Roon:
 
@@ -88,6 +88,7 @@ Version 0.4: fifty-six tools. Qobuz, TIDAL or both — whatever is signed in on 
 | `roon_library_add` | A Qobuz or TIDAL album into your library |
 | `roon_playlist_create` | A new playlist from tracks |
 | `roon_dsp_set` | MUSE on or off, one part on or off, or a preset |
+| `roon_radio_favorite` | A station into My Live Radio, or out of it |
 
 ## Install
 
@@ -107,7 +108,7 @@ The settings (Claude Desktop › Settings › Extensions › Deep Roon MCP):
 | Setting | What it does |
 |---|---|
 | Roon Core address | Empty: found on your network. Fill in the Core's address for another subnet or a private VPN (Tailscale) |
-| Essentials only | Seventeen tools instead of fifty-six, for small models |
+| Essentials only | Seventeen tools instead of fifty-seven, for small models |
 | Use Roon's internal protocol | Off: only the official API — zones, playback, volume, grouping; no search, reviews, Focus or history |
 
 ### Other clients

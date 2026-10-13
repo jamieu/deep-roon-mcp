@@ -6,6 +6,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import * as fc from '../roon/focus';
 import * as home from '../roon/home';
 import * as more from '../roon/more';
+import * as rd from '../roon/radio';
 import * as tidal from '../roon/tidal';
 import { run } from './run';
 
@@ -157,6 +158,13 @@ export function registerLibraryTools(server: McpServer): void {
     inputSchema: { source: z.enum(['roon', 'qobuz', 'tidal']).optional(), limit: limit(100, 50) },
     annotations: READ,
   }, ({ source, limit: n }) => run(() => more.favorites(source ?? 'roon', n ?? 50)));
+
+  server.registerTool('roon_radio_favorite', {
+    title: 'A station in My Live Radio',
+    description: 'Put a Live Radio station in the user\'s own list (My Live Radio), or take it out (`on: false`). The `key` comes from roon_radio. Changes the user\'s library: only on an explicit request. Reads the result back.',
+    inputSchema: { key: z.string(), on: z.boolean().optional() },
+    annotations: CHANGES,
+  }, ({ key, on }) => run(() => rd.radioFavorite(key, on !== false)));
 
   server.registerTool('roon_favorite', {
     title: 'Heart an album or track',
