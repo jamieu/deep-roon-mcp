@@ -223,6 +223,27 @@ export async function queueRemove(zoneName: string, ns: number[]) {
     return { ok: true, zone: z.name, removed: oids.length, left: Math.max(0, after.length - at) };
   });
 }
+/** Move an item of the queue next to another (Queue::MoveItems): `n` goes before or after `to` (positions from roon_queue).
+ *  InsertionPoint, measured 13 Oct 2026 on the Mu-so's queue: 0 = the start (before what plays — the item leaves the
+ *  view), 1 = the end, 2 = after the relative item, 3 = before it. */
+const INSERTION = { before: 3, after: 2 };
+export async function queueMove(zoneName: string, n: number, to: number, where: 'before' | 'after') {
+  return withCore(async (c) => {
+    const { z, q, oid, refs, at } = await queueItemAt(c, zoneName, n);
+    const rel = refs[at + to - 1];
+    if (rel === undefined || to === n) throw new RoonError(`The queue of ${z.name} has no item ${to} to move next to`, 'invalid');
+    const point = INSERTION[where];
+    const res = await c.call('Queue', 'MoveItems',
+      [{ type: 'IEnumerable<TransportItem>', name: 'items' }, { type: 'InsertionPoint', name: 'insertionpoint' }, { type: 'TransportItem', name: 'relative_to_item' }, { type: 'ResultCallback', name: 'cb_done' }],
+      Buffer.concat([buildArgs([Arg.collection([buildArgs([Arg.ref(oid)])]), Arg.enum_(point), Arg.ref(rel)])]), q.oid);
+    if (!res.success) throw new RoonError(`Roon refused to move the item (${res.status})`);
+    log(`queue_move: ${z.name} item ${n} → ${where} ${to} (point ${point})`);
+    await wait(300);
+    const after = await queueItems(c, q);
+    const now = after.indexOf(oid) - at + 1;
+    return { ok: true, zone: z.name, moved: n, now_at: now > 0 ? now : undefined };
+  });
+}
 export async function queue(zoneName: string, limit: number) {
   return withCore(async (c) => {
     const { z, q } = queueOf(c, zoneName);

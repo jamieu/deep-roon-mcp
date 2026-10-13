@@ -84,6 +84,13 @@ export function registerControlTools(server: McpServer, internal = true): void {
     annotations: CHANGES_QUEUE,
   }, ({ zone: zn, ns }) => run(() => ctl.queueRemove(zn, ns)));
 
+  reg('roon_queue_move', {
+    title: 'Move in the queue',
+    description: 'Move an item of the zone\'s queue next to another: `n` goes `before` or `after` item `to` (numbers from roon_queue; 1 is what plays). Only on an explicit request.',
+    inputSchema: { zone, n: z.number().int().min(2), to: z.number().int().min(2), where: z.enum(['before', 'after']).optional().describe('before (default) or after item `to`.') },
+    annotations: CHANGES_QUEUE,
+  }, ({ zone: zn, n, to, where }) => run(() => ctl.queueMove(zn, n, to, where ?? 'before')));
+
   reg('roon_queue_clear', {
     title: 'Clear the queue',
     description: 'Clear the queue of a Roon zone. By default the track that plays keeps playing and everything after it is removed; `everything: true` also removes the playing track (the zone falls silent). Only on an explicit request.',

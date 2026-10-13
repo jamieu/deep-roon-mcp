@@ -22,7 +22,7 @@ server of its own and sends nothing anywhere else. What you ask goes to your MCP
 
 ## Status
 
-Version 0.3: fifty-three tools. Qobuz, TIDAL or both — whatever is signed in on your Core.
+Version 0.3: fifty-four tools. Qobuz, TIDAL or both — whatever is signed in on your Core.
 
 **Reading** — changes nothing in Roon:
 
@@ -68,7 +68,7 @@ Version 0.3: fifty-three tools. Qobuz, TIDAL or both — whatever is signed in o
 | `roon_seek` | A position in the playing track |
 | `roon_volume` | A zone's volume, mute |
 | `roon_settings` | Shuffle, repeat, Roon Radio |
-| `roon_queue_jump`, `roon_queue_remove` | Jump to an item of the queue, take items out of it |
+| `roon_queue_jump`, `roon_queue_remove`, `roon_queue_move` | Jump to an item of the queue, take items out, move one before or after another |
 | `roon_queue_clear` | Clear what comes after the playing track (or everything) |
 | `roon_transfer` | Move what plays, with its queue, to another zone |
 | `roon_group`, `roon_ungroup` | Group zones, and undo it |
@@ -105,7 +105,7 @@ The settings (Claude Desktop › Settings › Extensions › Deep Roon MCP):
 | Setting | What it does |
 |---|---|
 | Roon Core address | Empty: found on your network. Fill in the Core's address for another subnet or a private VPN (Tailscale) |
-| Essentials only | Seventeen tools instead of fifty-three, for small models |
+| Essentials only | Seventeen tools instead of fifty-four, for small models |
 | Use Roon's internal protocol | Off: only the official API — zones, playback, volume, grouping; no search, reviews, Focus or history |
 
 ### Other clients
