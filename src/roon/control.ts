@@ -189,6 +189,40 @@ function queueRow(c: C, oid: bigint): Any {
   const img = imageKey(c, al) ?? imageKey(c, tr); if (img) r.image = img;
   return r;
 }
+/** The queue item at position n (1 = what plays now, as roon_queue numbers them). */
+async function queueItemAt(c: C, zoneName: string, n: number) {
+  const { z, q } = queueOf(c, zoneName);
+  const refs = await queueItems(c, q);
+  const at = Math.max(0, field(c.graph.getObject(q.oid), 'CurrentItemIndex') ?? 0);
+  const oid = refs[at + n - 1];
+  if (oid === undefined) throw new RoonError(`The queue of ${z.name} has no item ${n} (${Math.max(0, refs.length - at)} from here)`, 'invalid');
+  return { z, q, oid, refs, at };
+}
+/** Jump to an item of the queue (Queue::PlayFromHere): it plays, what came before it is done. */
+export async function queueJump(zoneName: string, n: number) {
+  const r = await withCore(async (c) => {
+    const { z, q, oid } = await queueItemAt(c, zoneName, n);
+    c.remoting.callMethodNoReply(q.oid, formatMethodSignature('Queue', 'PlayFromHere', [{ type: 'TransportItem', name: 'item' }]), buildArgs([Arg.ref(oid)]));
+    log(`queue_jump: ${z.name} → item ${n}`);
+    return { zone: z.name, n };
+  });
+  return { ok: true, ...r, ...(await started(r.zone, PRIORITY['now'])) };
+}
+/** Take items out of the queue (Queue::RemoveItems), by their positions from roon_queue. */
+export async function queueRemove(zoneName: string, ns: number[]) {
+  return withCore(async (c) => {
+    const { z, q } = queueOf(c, zoneName);
+    const refs = await queueItems(c, q);
+    const at = Math.max(0, field(c.graph.getObject(q.oid), 'CurrentItemIndex') ?? 0);
+    const oids = [...new Set(ns)].map((n) => refs[at + n - 1]).filter((o): o is bigint => o !== undefined);
+    if (!oids.length) throw new RoonError('No such items in the queue', 'invalid');
+    c.remoting.callMethodNoReply(q.oid, formatMethodSignature('Queue', 'RemoveItems', [{ type: 'IEnumerable<TransportItem>', name: 'items' }]), buildArgs([Arg.collection(oids.map((o) => buildArgs([Arg.ref(o)])))]));
+    log(`queue_remove: ${z.name} − ${oids.length} item(s)`);
+    await wait(300);
+    const after = await queueItems(c, q);
+    return { ok: true, zone: z.name, removed: oids.length, left: Math.max(0, after.length - at) };
+  });
+}
 export async function queue(zoneName: string, limit: number) {
   return withCore(async (c) => {
     const { z, q } = queueOf(c, zoneName);

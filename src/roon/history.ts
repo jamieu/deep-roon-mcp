@@ -11,7 +11,8 @@ export async function history(limit: number) {
     closeSoon('after the history');
     return {
       total: out.total ?? null,
-      plays: out.events.map((e) => ({ at: localTime(e.playedAt), title: e.title, artist: clean(e.artist), album: e.album ?? undefined, played_pct: e.completionPct ?? undefined })),
+      plays: out.events.map((e) => ({ at: localTime(e.playedAt), title: e.title, artist: clean(e.artist), album: e.album ?? undefined, played_pct: e.completionPct ?? undefined,
+                                      track_key: e.roonTrackId ?? undefined })),   // for roon_play_tracks (13 Oct 2026, Rosso's history)
     };
   });
 }

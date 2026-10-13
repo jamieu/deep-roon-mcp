@@ -9,6 +9,7 @@ import { findTarget } from '../core/session';
 import { run, runImage } from './run';
 
 // Changes what plays, but isn't destructive: no confirmation needed beyond the user's own request.
+const CHANGES_QUEUE = { readOnlyHint: false, destructiveHint: true, openWorldHint: false } as const;
 const PLAYS = { readOnlyHint: false, destructiveHint: false, openWorldHint: false } as const;
 // Removes something (the queue) — clients may ask for confirmation.
 const REMOVES = { readOnlyHint: false, destructiveHint: true, openWorldHint: false } as const;
@@ -68,6 +69,20 @@ export function registerControlTools(server: McpServer, internal = true): void {
     inputSchema: { zone, limit: z.number().int().min(1).max(200).optional() },
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, ({ zone: zn, limit }) => run(() => ctl.queue(zn, limit ?? 50)));
+
+  reg('roon_queue_jump', {
+    title: 'Jump in the queue',
+    description: 'Play an item of the zone\'s queue now (`n` as roon_queue numbers them: 1 is what plays, 2 the next …); what came before it is done. Only on an explicit request.',
+    inputSchema: { zone, n: z.number().int().min(1) },
+    annotations: PLAYS,
+  }, ({ zone: zn, n }) => run(() => ctl.queueJump(zn, n)));
+
+  reg('roon_queue_remove', {
+    title: 'Remove from the queue',
+    description: 'Take items out of the zone\'s queue, by their numbers from roon_queue (`ns`, e.g. [3, 4]). Only on an explicit request.',
+    inputSchema: { zone, ns: z.array(z.number().int().min(2)).min(1).max(100).describe('Positions from roon_queue (2 and up: 1 is what plays).') },
+    annotations: CHANGES_QUEUE,
+  }, ({ zone: zn, ns }) => run(() => ctl.queueRemove(zn, ns)));
 
   reg('roon_queue_clear', {
     title: 'Clear the queue',
