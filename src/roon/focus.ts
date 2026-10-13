@@ -169,6 +169,20 @@ const TRACK_ORDER = { title: 0, released: 1, most_played: 2, last_played: 3, art
 const ARTIST_ORDER = { name: 0, albums: 2, works: 3, most_played: 4, popular: 6 };
 const WORK_ORDER = { title: 0, composer: 1, composed: 3, period: 4, performances: 5, popular: 9 };
 
+/** Roon's top-level genres (the GENRES of Focus): the names an album's own `genres` list mixes with sub-genres. Read once
+ *  from the library's Focus histogram, kept for the life of the process (13 Oct 2026, for the genre filter on a shelf). */
+let toplevelNames: Set<string> | null = null;
+export async function toplevelGenres(c: C): Promise<Set<string>> {
+  if (toplevelNames) return toplevelNames;
+  const { members } = await focusMembers(c, {});
+  const info = await albumInfo(c, members);
+  const hist = items(c, field(info, 'ToplevelGenres')).map((it) => field(it, 'Value'));
+  await untilLoaded(c, hist.filter(isRef), 2000);
+  const names = hist.map((w) => (isRef(w) ? field(obj(c, w), 'Name') : w)).filter((n): n is string => typeof n === 'string');
+  if (names.length) toplevelNames = new Set(names);
+  return new Set(names);
+}
+
 export async function library(f: Filters, sort: string | undefined, ascending: boolean | undefined, limit: number, offset: number) {
   return withCore(async (c) => {
     const { members, matched } = await focusMembers(c, f);

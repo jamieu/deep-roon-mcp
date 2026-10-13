@@ -5,6 +5,7 @@ import { BinaryWriter } from '../intern/proto/writer';
 import { withCore, RoonError } from '../core/session';
 import { log } from '../core/log';
 import { Any, C, albumRow, clean, field, items, obj, resultRow, strings, untilLoaded } from './graph';
+import { toplevelGenres } from './focus';
 import { findZone } from './zones';
 import { How, PRIORITY, playParams, started } from './control';
 
@@ -44,15 +45,22 @@ export async function newForYou(limit: number, offset: number, genre?: string) {
     const res = await c.call('Library', 'GetNewReleasesForYou', [{ type: 'Sooid', name: 'profileid' }, { type: 'ResultCallback<DataList<AlbumWithExtras>>', name: 'cb_result' }], buildArgs([Arg.sooid(c.profile())]), c.serviceOid('Library'));
     if (!res.success) throw new RoonError(`Roon refused New releases for you (${res.status})`);
     let all = items(c, decoded(c, res.payload));
+    // The shelf's top-level genres with their album counts (13 Oct 2026): what a genre filter on this shelf can choose from.
+    await untilLoaded(c, all.map((x) => field(x, 'Album')).filter(isRef), 4000);
+    const top = await toplevelGenres(c);
+    const counts = new Map<string, number>();
+    for (const x of all) for (const n of new Set(strings(c, field(obj(c, field(x, 'Album')), 'Genres')))) if (top.has(n)) counts.set(n, (counts.get(n) ?? 0) + 1);
+    const genres = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([name, albums]) => ({ name, albums }));
     if (genre) {
       // A genre filter (13 Oct 2026): keep the albums whose genres name it — the albums come first, then the filter.
-      await untilLoaded(c, all.map((x) => field(x, 'Album')).filter(isRef), 4000);
       const g = genre.toLowerCase();
-      all = all.filter((x) => strings(c, field(obj(c, field(x, 'Album')), 'Genres')).some((n) => n.toLowerCase().includes(g)));
+      const names = (x: Any) => strings(c, field(obj(c, field(x, 'Album')), 'Genres')).map((n) => n.toLowerCase());
+      const exact = all.filter((x) => names(x).includes(g));
+      all = exact.length ? exact : all.filter((x) => names(x).some((n) => n.includes(g)));
     }
     const part = all.slice(Math.max(0, offset), Math.max(0, offset) + Math.min(Math.max(1, limit), 100));
     await untilLoaded(c, part.map((x) => field(x, 'Album')).filter(isRef), 3000);
-    return { total: all.length, offset: Math.max(0, offset), rows: part.map((x) => {
+    return { total: all.length, offset: Math.max(0, offset), genres, rows: part.map((x) => {
       const a = obj(c, field(x, 'Album')); if (!a || field(a, 'Title') === undefined) return null;
       const r: Any = albumRow(c, a); const t = field(obj(c, field(x, 'Review')), 'Text');
       if (t) r.review = clean(t).replace(/\s+/g, ' ').slice(0, 320);
