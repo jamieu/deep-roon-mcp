@@ -304,8 +304,11 @@ export async function bio(key: string, max: number, wiki: boolean) {
     const list = (name: string): Any[] => obj(c, field(p, name))?.fields?.$items ?? [];
     await untilLoaded(c, ['SimilarTo', 'Followed', 'Influenced', 'CollaboratorWith', 'IsAssociatedWith', 'MemberOf', 'Members'].flatMap((k) => list(k).slice(0, 12)).filter(isRef), 1500);
     const people = (...names: string[]) => {
-      const out: { key?: string; name: string }[] = [];
-      for (const n of names) for (const x of list(n)) { const o = obj(c, x); const name = field(o, 'Name'); if (name && !out.some((y) => y.name === name)) out.push({ key: String(field(o, 'PerformerId') ?? '') || undefined, name }); }
+      const out: { key?: string; name: string; image?: string }[] = [];
+      for (const n of names) for (const x of list(n)) {
+        const o = obj(c, x); const name = field(o, 'Name');
+        if (name && !out.some((y) => y.name === name)) { const r: { key?: string; name: string; image?: string } = { key: String(field(o, 'PerformerId') ?? '') || undefined, name }; const img = imageKey(c, o, 'Photo') ?? imageKey(c, o, 'Avatar'); if (img) r.image = img; out.push(r); }
+      }
       return out.length ? out.slice(0, 12) : undefined;
     };
     const artist: Any = { key, name: field(p, 'Name') };
