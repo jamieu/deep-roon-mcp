@@ -92,6 +92,13 @@ export function registerLibraryTools(server: McpServer): void {
     annotations: READ,
   }, ({ limit: n }) => run(() => home.dailyPicks(n ?? 8)));
 
+  server.registerTool('roon_mix', {
+    title: 'A Daily Mix\'s tracks',
+    description: 'The tracks inside one of Roon\'s Daily Mixes (by `key` or name from roon_mixes), as Roon\'s mix page shows them before playing — each with a `key` for roon_play_tracks. To play the whole mix, roon_play_mix.',
+    inputSchema: { key: z.string().describe('A mix key or its name, from roon_mixes.'), limit: limit(300, 100) },
+    annotations: READ,
+  }, ({ key, limit: n }) => run(() => home.mix(key, n ?? 100)));
+
   server.registerTool('roon_new_for_you', {
     title: 'New releases for you',
     description: '"New releases for you" from Roon\'s Home: new albums Roon picked for this user, from the artists and music they listen to — personal, unlike roon_new (the streaming services\' editorial shelf, the same for everyone). Use it for "my new releases", "what\'s new for me". Albums carry year, format, `genres`, sometimes a `review`, and a `key`; `genres` at the top counts the shelf\'s top-level genres (the choices for `genre`).',

@@ -4,7 +4,7 @@ import { Arg, buildArgs } from '../intern/proto/serializer';
 import { BinaryWriter } from '../intern/proto/writer';
 import { withCore, RoonError } from '../core/session';
 import { log } from '../core/log';
-import { Any, C, albumRow, clean, field, imageKey, imageKeys, items, obj, resultRow, strings, untilLoaded } from './graph';
+import { Any, C, albumRow, clean, duration, field, imageKey, imageKeys, items, obj, resultRow, strings, untilLoaded } from './graph';
 import { toplevelGenres } from './focus';
 import { findZone } from './zones';
 import { How, PRIORITY, playParams, started } from './control';
@@ -89,6 +89,31 @@ export async function mixes() {
     const imgs = gd ? imageKeys(c, gd) : []; if (imgs.length) r.images = imgs;
     return r;
   }) }));
+}
+/** A Daily Mix opened like a playlist (13 Oct 2026): Mix::GetItems on the mix itself gives its MixItems, each with its tracks —
+ *  measured in Roon.Broker.Api.dll; this is what Roon's own mix page shows ("21 tracks | 2 hours") before playing. */
+export async function mix(key: string, limit: number) {
+  return withCore(async (c) => {
+    const all = await readMixes(c);
+    const m = all.find((x) => mixKey(x) === key) ?? all.find((x) => String(mixName(c, x)).toLowerCase() === key.toLowerCase());
+    if (!m?.oid) throw new RoonError('Unknown mix — read roon_mixes for today\'s keys', 'not_found');
+    const res = await c.call('Mix', 'GetItems', [{ type: 'ResultCallback<DataList<MixItem>>', name: 'cb_result' }], Buffer.alloc(0), m.oid);
+    if (!res.success) throw new RoonError(`Roon refused the mix (${res.status})`);
+    const its = items(c, decoded(c, res.payload));
+    const refs = its.flatMap((it) => ((obj(c, field(it, 'Tracks'))?.fields?.$items ?? []) as Any[]));
+    await untilLoaded(c, refs, 3000);
+    const tracks = its.flatMap((it) => items(c, field(it, 'Tracks'))).filter((t) => field(t, 'Title') !== undefined);
+    const pd = obj(c, field(m, 'PerformerMixDescription'));
+    const head: Any = { key: mixKey(m), name: mixName(c, m) };
+    const img = pd ? (imageKey(c, pd, 'Photo') ?? imageKey(c, pd, 'Avatar')) : undefined; if (img) head.image = img;
+    return { mix: head, total: tracks.length, rows: tracks.slice(0, Math.min(Math.max(1, limit), 300)).map((t, i) => {
+      const al = obj(c, field(t, 'Album')); const r: Any = { n: i + 1, key: String(field(t, 'TrackId') ?? ''), title: field(t, 'Title') ?? '', artist: clean(field(al, 'PerformedBy') ?? field(t, 'PerformedBy') ?? ''), album: field(al, 'Title') ?? undefined };
+      const ak = field(al, 'AlbumId'); if (ak !== undefined && ak !== null) r.album_key = String(ak);
+      const l = field(t, 'LengthSeconds'); if (typeof l === 'number' && l > 0) r.length = duration(l);
+      const im = imageKey(c, al); if (im) r.image = im;
+      return r;
+    }) };
+  });
 }
 /** Playing a Daily Mix (Transport::PlayMix, from the start). */
 export async function playMix(key: string, zoneName: string, how: How) {
