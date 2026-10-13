@@ -14,6 +14,8 @@ export interface Filters {
   min_stars?: number; genre?: string; label?: string; artist?: string; composer?: string; producer?: string;
   year_from?: number; year_to?: number; hires?: boolean; live?: boolean; compilation?: boolean; picks?: boolean;
   text?: string; favorites?: boolean; played_within_days?: number; not_played_within_days?: number; added_within_days?: number;
+  sample_rate?: string; bits?: string; mqa?: boolean;   // 13 Oct 2026, Rosso's Focus: "44.1, 96" (kHz), "16, 24"
+  storage?: string;   // where the albums live: "tidal", "qobuz" or "local" — matched against the Locations of the library
 }
 interface Member { name: string; propType: number; value: Buffer }
 
@@ -112,6 +114,23 @@ async function focusMembers(c: C, f: Filters, people: ('artist' | 'composer' | '
   if (f.not_played_within_days) m.push({ name: 'ExcludePlayedInLastNDays', propType: 10, value: maybeInt(f.not_played_within_days) });
   if (f.added_within_days) m.push({ name: 'RequireImportedInLastNDays', propType: 10, value: maybeInt(f.added_within_days) });
   if (f.hires) m.push({ name: 'RequireSampleRates', propType: 23, value: intList([88200, 96000, 176400, 192000, 352800, 384000]) });
+  if (f.sample_rate) {
+    const hz = names(f.sample_rate).map((x) => Math.round(parseFloat(x) * (parseFloat(x) < 1000 ? 1000 : 1))).filter((x) => x > 0);
+    if (hz.length) m.push({ name: 'RequireSampleRates', propType: 23, value: intList(hz) });
+  }
+  if (f.bits) { const b = names(f.bits).map(Number).filter((x) => x > 0); if (b.length) m.push({ name: 'RequireBitsPerSample', propType: 23, value: intList(b) }); }
+  if (f.mqa === true) m.push(yes('RequireIsMQA')); else if (f.mqa === false) m.push(yes('ExcludeIsMQA'));
+  if (f.storage) {
+    // The Location objects come from the panel of the whole library ("TIDAL Library", "qobuz Library", and a number for
+    // local files — measured 13 Oct 2026); the criteria want the objects.
+    const whole = await albumInfo(c, []);
+    const want = f.storage.toLowerCase();
+    const locs = items(c, field(whole, 'Locations')).map((it) => field(it, 'Value')).filter(isRef);
+    await untilLoaded(c, locs, 1500);
+    const hit = locs.find((v) => { const n = String(field(obj(c, v), 'Name') ?? '').toLowerCase(); return want === 'local' ? !/tidal|qobuz/.test(n) : n.includes(want); });
+    if (!hit) throw new RoonError(`No "${f.storage}" in this library's locations`, 'not_found');
+    m.push({ name: 'RequireLocations', propType: 23, value: refList([hit.$ref]) });
+  }
   if (f.live === true) m.push(yes('RequireIsLive')); else if (f.live === false) m.push(yes('ExcludeIsLive'));
   if (f.compilation === true) m.push(yes('RequireIsCompilation')); else if (f.compilation === false) m.push(yes('ExcludeIsCompilation'));
   if (f.picks) m.push(yes('RequireIsPick'));
@@ -183,6 +202,9 @@ export async function focus(f: Filters, more: string | undefined, search: string
       sample_rates: numbers('SampleRate').map((x) => ({ rate: `${x.w / 1000} kHz`, albums: x.n })),
       bit_depths: numbers('BitsPerSample').map((x) => ({ bits: x.w, albums: x.n })),
       live: field(info, 'IsLiveCount') ?? 0, compilations: field(info, 'IsCompilationCount') ?? 0, roon_picks: field(info, 'IsPickCount') ?? 0,
+      mqa: field(info, 'IsMQACount') ?? 0,
+      // Raw histograms, to be named once measured (13 Oct 2026): where the albums live, and their file formats.
+      storage: hist('Locations').map((x) => { const n = isRef(x.w) ? String(field(obj(c, x.w), 'Name') ?? '') : String(x.w); return { name: /tidal/i.test(n) ? 'TIDAL' : /qobuz/i.test(n) ? 'Qobuz' : 'Local', albums: x.n }; }),
     };
   });
 }

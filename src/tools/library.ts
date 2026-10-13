@@ -28,6 +28,8 @@ const FOCUS = {
   year_from: z.number().int().optional(), year_to: z.number().int().optional(),
   hires: z.boolean().optional().describe('Above 48 kHz.'), live: z.boolean().optional(), compilation: z.boolean().optional(), picks: z.boolean().optional().describe('Roon\'s own picks.'),
   text: z.string().optional().describe('A word in the title or artist.'), favorites: z.boolean().optional(),
+  sample_rate: z.string().optional().describe('Sample rates in kHz, comma-separated: "44.1, 96".'), bits: z.string().optional().describe('Bit depths, comma-separated: "16, 24".'), mqa: z.boolean().optional(),
+  storage: z.enum(['tidal', 'qobuz', 'local']).optional().describe('Where the albums live.'),
   played_within_days: days, not_played_within_days: days, added_within_days: days,
 };
 type FocusArgs = { [K in keyof typeof FOCUS]?: z.infer<(typeof FOCUS)[K]> };
