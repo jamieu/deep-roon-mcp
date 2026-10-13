@@ -5,6 +5,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import * as lib from '../roon/library';
 import * as hist from '../roon/history';
 import * as zn from '../roon/zones';
+import * as rd from '../roon/radio';
 import * as off from '../core/officialtools';
 import { run } from './run';
 
@@ -83,6 +84,13 @@ export function registerReadTools(server: McpServer, internal = true): void {
     inputSchema: {},
     annotations: READ,
   }, () => run(() => (internal ? zn.nowPlaying() : off.nowPlaying())));
+
+  reg('roon_radio', {
+    title: 'Live Radio',
+    description: 'Roon\'s Live Radio directory. Without arguments: the user\'s own stations (`my_stations`) and the top categories (Music, News & Talk, Sports, Locations), each with a `key`. With `category` (a key): its sub-categories and stations. With `genre` (a category\'s name as written, e.g. "Jazz", "Classical"): stations of that genre. Stations carry a `key` for roon_play_radio, their location and `image`.',
+    inputSchema: { category: z.string().optional().describe('A category key from a previous answer.'), genre: z.string().optional().describe('A genre, as roon_radio names it (e.g. Jazz).'), limit: limit(100, 40) },
+    annotations: READ,
+  }, ({ category, genre, limit: n }) => run(() => rd.radio(category, genre, n ?? 40)));
 
   reg('roon_history', {
     title: 'Play history',

@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import * as ctl from '../roon/control';
+import * as rd from '../roon/radio';
 import { setVolume } from '../core/official';
 import * as off from '../core/officialtools';
 import { findTarget } from '../core/session';
@@ -33,6 +34,13 @@ export function registerControlTools(server: McpServer, internal = true): void {
     inputSchema: { keys: z.array(z.string()).min(1).max(60).describe('Track keys, in playing order.'), zone, mode },
     annotations: PLAYS,
   }, ({ keys, zone: zn, mode: m }) => run(() => ctl.playTracks(keys, zn, m ?? 'now')));
+
+  reg('roon_play_radio', {
+    title: 'Play a radio station',
+    description: 'Play a Live Radio station on a Roon zone: `key` from roon_radio, or the name of one of the user\'s own stations. Says whether the zone started. Only on an explicit request, never as a probe.',
+    inputSchema: { key: z.string().describe('A station key, or the name of an own station.'), zone },
+    annotations: PLAYS,
+  }, ({ key, zone: zn }) => run(() => rd.playRadio(key, zn)));
 
   reg('roon_control', {
     title: 'Transport',

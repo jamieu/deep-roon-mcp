@@ -1,7 +1,7 @@
 # Deep Roon MCP
 
 The parts of Roon the official API doesn't reach, for Claude and any other MCP client: the reviews and biographies Roon
-shows, search across your library and Qobuz or TIDAL at once, their editorial shelves and TIDAL's playlists and mixes,
+shows, search across your library and Qobuz or TIDAL at once, their editorial shelves, TIDAL's playlists and mixes, Live Radio,
 album pages with credits, artist discographies, and your own play history with real "most played" counts.
 
 > **Read this first.** Deep Roon MCP is unofficial: it is not made, endorsed or supported by Roon Labs. It uses Roon's
@@ -22,7 +22,7 @@ server of its own and sends nothing anywhere else. What you ask goes to your MCP
 
 ## Status
 
-Version 0.3: fifty-four tools. Qobuz, TIDAL or both — whatever is signed in on your Core.
+Version 0.4: fifty-six tools. Qobuz, TIDAL or both — whatever is signed in on your Core.
 
 **Reading** — changes nothing in Roon:
 
@@ -57,6 +57,7 @@ Version 0.3: fifty-four tools. Qobuz, TIDAL or both — whatever is signed in on
 | `roon_similar` | More like this, for an album or an artist |
 | `roon_signal_path` | Roon's signal path for what plays: is it bit-perfect, what happens on the way |
 | `roon_dsp` | MUSE: the DSP set up for a zone |
+| `roon_radio` | Live Radio: your own stations, the directory by category and genre |
 
 **Playing** — only on your request:
 
@@ -76,6 +77,7 @@ Version 0.3: fifty-four tools. Qobuz, TIDAL or both — whatever is signed in on
 | `roon_standby` | Put a device in standby, or wake it |
 | `roon_play_playlist` | A playlist on a zone (also a TIDAL one), optionally shuffled |
 | `roon_play_mix` | One of today's Daily Mixes |
+| `roon_play_radio` | A Live Radio station on a zone |
 
 **Changing your library or sound** — only on your request; each one reads the result back and says if Roon didn't follow:
 
@@ -105,7 +107,7 @@ The settings (Claude Desktop › Settings › Extensions › Deep Roon MCP):
 | Setting | What it does |
 |---|---|
 | Roon Core address | Empty: found on your network. Fill in the Core's address for another subnet or a private VPN (Tailscale) |
-| Essentials only | Seventeen tools instead of fifty-four, for small models |
+| Essentials only | Seventeen tools instead of fifty-six, for small models |
 | Use Roon's internal protocol | Off: only the official API — zones, playback, volume, grouping; no search, reviews, Focus or history |
 
 ### Other clients
