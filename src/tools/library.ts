@@ -95,9 +95,9 @@ export function registerLibraryTools(server: McpServer): void {
   server.registerTool('roon_new_for_you', {
     title: 'New releases for you',
     description: '"New releases for you" from Roon\'s Home: new albums Roon picked for this user, from the artists and music they listen to — personal, unlike roon_new (the streaming services\' editorial shelf, the same for everyone). Use it for "my new releases", "what\'s new for me". Albums carry year, format, sometimes a `review`, and a `key`.',
-    inputSchema: { limit: limit(100, 30), offset },
+    inputSchema: { limit: limit(100, 30), offset, genre: z.string().optional().describe('Only albums of this genre (a Roon genre name, e.g. Jazz; sub-genres match too).') },
     annotations: READ,
-  }, ({ limit: n, offset: o }) => run(() => home.newForYou(n ?? 30, o ?? 0)));
+  }, ({ limit: n, offset: o, genre }) => run(() => home.newForYou(n ?? 30, o ?? 0, genre)));
 
   server.registerTool('roon_mixes', {
     title: 'Daily Mixes',

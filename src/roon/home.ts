@@ -4,7 +4,7 @@ import { Arg, buildArgs } from '../intern/proto/serializer';
 import { BinaryWriter } from '../intern/proto/writer';
 import { withCore, RoonError } from '../core/session';
 import { log } from '../core/log';
-import { Any, C, albumRow, clean, field, items, obj, resultRow, untilLoaded } from './graph';
+import { Any, C, albumRow, clean, field, items, obj, resultRow, strings, untilLoaded } from './graph';
 import { findZone } from './zones';
 import { How, PRIORITY, playParams, started } from './control';
 
@@ -39,11 +39,17 @@ export async function dailyPicks(perBox: number) {
 }
 
 /** "New releases for you": a list of AlbumWithExtras {Album, Review {Text, Author}}. */
-export async function newForYou(limit: number, offset: number) {
+export async function newForYou(limit: number, offset: number, genre?: string) {
   return withCore(async (c) => {
     const res = await c.call('Library', 'GetNewReleasesForYou', [{ type: 'Sooid', name: 'profileid' }, { type: 'ResultCallback<DataList<AlbumWithExtras>>', name: 'cb_result' }], buildArgs([Arg.sooid(c.profile())]), c.serviceOid('Library'));
     if (!res.success) throw new RoonError(`Roon refused New releases for you (${res.status})`);
-    const all = items(c, decoded(c, res.payload));
+    let all = items(c, decoded(c, res.payload));
+    if (genre) {
+      // A genre filter (13 Oct 2026): keep the albums whose genres name it — the albums come first, then the filter.
+      await untilLoaded(c, all.map((x) => field(x, 'Album')).filter(isRef), 4000);
+      const g = genre.toLowerCase();
+      all = all.filter((x) => strings(c, field(obj(c, field(x, 'Album')), 'Genres')).some((n) => n.toLowerCase().includes(g)));
+    }
     const part = all.slice(Math.max(0, offset), Math.max(0, offset) + Math.min(Math.max(1, limit), 100));
     await untilLoaded(c, part.map((x) => field(x, 'Album')).filter(isRef), 3000);
     return { total: all.length, offset: Math.max(0, offset), rows: part.map((x) => {

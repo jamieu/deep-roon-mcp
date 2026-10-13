@@ -120,7 +120,7 @@ export function sourceOf(...os: Any[]): Source | undefined {
 }
 export interface AlbumRow {
   kind: 'album'; key: string; title: string; artist: string; format?: string; year?: number; stars?: number; label?: string;
-  source: Source; in_library?: boolean; favorite?: boolean; listen_later?: boolean; popularity?: number; image?: string;
+  source: Source; in_library?: boolean; favorite?: boolean; listen_later?: boolean; popularity?: number; image?: string; genres?: string[];
 }
 export function albumRow(c: C, o: Any): AlbumRow {
   const fm = obj(c, field(o, 'AlbumFormat'));
@@ -129,6 +129,7 @@ export function albumRow(c: C, o: Any): AlbumRow {
   const y = yearOf(field(o, 'OriginalReleaseDate')) ?? yearOf(field(o, 'ReleaseDate')); if (y) r.year = y;
   const st = field(o, 'Rating'); if (typeof st === 'number' && st > 0) r.stars = st / 2;   // Roon's rating 1–10 = half stars
   const lb = strings(c, field(o, 'Labels')); if (lb.length) r.label = lb.join(' / ');
+  const gs = strings(c, field(o, 'Genres')); if (gs.length) r.genres = gs.slice(0, 6);   // Roon's genres of the album, for a genre filter on a shelf (13 Oct 2026)
   if (field(o, 'Source') === 1) r.in_library = true;    // Source: Local = 1 — in the library, also a streaming album
   if (flag(field(o, 'IsFavorite'))) r.favorite = true;
   if (flag(field(o, 'IsListenLater'))) r.listen_later = true;
