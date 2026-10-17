@@ -345,3 +345,52 @@ export async function discography(key: string, wanted?: Service) {
     return { service: SERVICE_NAME[service], artist, albums };
   });
 }
+
+// ---- file paths (0.4.6) ----
+// Roon's own export (Library::GetTrackExportInfo…, the data behind its Export): per track the file as the Core sees it,
+// plus any duplicates. Asked for on the Roon forum: "a unique key to join on" with per-file waveform data. Local files
+// only — a streaming track has no file and comes back without a path.
+export async function trackFiles(a: { album?: string; artist?: string; tracks?: string[] }) {
+  return withCore(async (c) => {
+    const cb = { type: 'ResultCallback<IList<TrackExportInfo>>', name: 'cb_result' };
+    let res;
+    if (a.tracks?.length) {
+      if (a.tracks.some((k) => !/^\d+$/.test(k))) throw new RoonError('A track key is a number', 'invalid');
+      res = await short(c.call('Library', 'GetTrackExportInfo', [{ type: 'IEnumerable<long>', name: 'ids' }, cb],
+        buildArgs([Arg.collection(a.tracks.map((k) => buildArgs([Arg.long(BigInt(k))])))]), library(c)), 20000);
+    } else if (a.album) {
+      const al = await findAlbum(c, a.album);
+      res = await short(c.call('Library', 'GetTrackExportInfoForAlbums', [{ type: 'IEnumerable<AlbumBase>', name: 'albums' }, cb],
+        buildArgs([Arg.collection([buildArgs([Arg.ref(al.oid)])])]), library(c)), 20000);
+    } else if (a.artist) {
+      const p = await performer(c, a.artist);
+      res = await short(c.call('Library', 'GetTrackExportInfoForPerformers', [{ type: 'IEnumerable<PerformerBase>', name: 'performers' }, cb],
+        buildArgs([Arg.collection([buildArgs([Arg.ref(p.$ref)])])]), library(c)), 30000);
+    } else throw new RoonError('Give an album key, an artist key or track keys', 'invalid');
+    if (!res?.success) throw new RoonError(`Roon refused the file list (${res?.status ?? 'no answer'})`);
+    if (res.payload.length < 2) return { tracks: [] };
+    // IList<TrackExportInfo>: structs by value, like the histogram lists of Focus (focus.ts › panelList).
+    const r = new BinaryReader(Uint8Array.from(res.payload)); r.integer(); const n = r.flexInt();
+    const graph = c.graph as Any;   // readValue isn't part of the graph's public surface
+    const infos: Any[] = [];
+    for (let i = 0; i < n && r.remaining > 0; i++) infos.push(graph.readValue(r, 23));
+    await untilLoaded(c, infos.map((x) => field(x, 'Track')).filter(isRef), 3000);
+    const paden = (x: Any): string[] => items(c, field(x, 'DuplicateTracks')).map((d) => field(d, 'FilePath')).filter((p): p is string => typeof p === 'string' && !!p);
+    const tracks = infos.map((x) => {
+      const t = obj(c, field(x, 'Track'));
+      const row: Any = { key: String(field(t, 'TrackId') ?? '') };
+      const title = field(t, 'Title'); if (title) row.title = title;
+      const al = field(obj(c, field(t, 'Album')), 'Title'); if (al) row.album = al;
+      const n2 = field(t, 'TrackNumber'); if (n2 != null) row.n = n2;
+      const path = field(x, 'FilePath'); if (typeof path === 'string' && path) row.path = path;
+      const format = field(t, 'Format'); if (format) row.format = format;
+      const dup = paden(x); if (dup.length) row.duplicates = dup;
+      return row;
+    });
+    // Roon leaves out what has no file (a streaming track): say so, instead of a silently shorter list.
+    const gevraagd = a.tracks?.length ?? 0, ontbreekt = gevraagd ? gevraagd - tracks.length : 0;
+    const zonder = tracks.filter((t) => !t.path).length + Math.max(0, ontbreekt);
+    const of = gevraagd || tracks.length;
+    return { tracks, ...(zonder ? { note: `${zonder} of ${of} ${of === 1 ? 'track has' : 'tracks have'} no file (streaming tracks, or not on this Core's storage)` } : {}) };
+  });
+}

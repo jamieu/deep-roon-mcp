@@ -22,7 +22,7 @@ server of its own and sends nothing anywhere else. What you ask goes to your MCP
 
 ## Status
 
-Version 0.4: fifty-seven tools. Qobuz, TIDAL or both — whatever is signed in on your Core.
+Version 0.4: fifty-nine tools. Qobuz, TIDAL or both — whatever is signed in on your Core.
 
 **Reading** — changes nothing in Roon:
 
@@ -32,6 +32,7 @@ Version 0.4: fifty-seven tools. Qobuz, TIDAL or both — whatever is signed in o
 | `roon_new` | Qobuz's shelves (new, qobuzissimes, press awards, top, trending, ideal discography) or TIDAL's (new, recommended, top, rising, masters; albums or tracks) — by genre |
 | `roon_genres` | Qobuz's genres and their ids, or TIDAL's genres and moods |
 | `roon_album` | An album's page: tracks, release dates, label, barcode, credits |
+| `roon_track_files` | Where your own files are: per track of an album, an artist or a list of tracks, the file path as the Core sees it (and duplicates) — Roon's export data |
 | `roon_review` | The review Roon shows, in full, with its author |
 | `roon_bio` | The biography Roon shows, in full, with related artists |
 | `roon_artist` | An artist's discography at Qobuz or TIDAL, oldest first |
@@ -108,7 +109,7 @@ The settings (Claude Desktop › Settings › Extensions › Deep Roon MCP):
 | Setting | What it does |
 |---|---|
 | Roon Core address | Empty: found on your network. Fill in the Core's address for another subnet or a private VPN (Tailscale) |
-| Essentials only | Seventeen tools instead of fifty-seven, for small models |
+| Essentials only | Seventeen tools instead of fifty-nine, for small models |
 | Use Roon's internal protocol | Off: only the official API — zones, playback, volume, grouping; no search, reviews, Focus or history |
 
 ### Other clients

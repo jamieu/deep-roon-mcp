@@ -50,6 +50,17 @@ export function registerReadTools(server: McpServer, internal = true): void {
     annotations: READ,
   }, ({ key, credits }) => run(() => lib.album(key, credits === true)));
 
+  reg('roon_track_files', {
+    title: 'File paths',
+    description: 'Where the user\'s own music files are: for an album (`album` key), an artist (`artist` key, all their tracks in the library) or a list of `tracks` keys, each track with its `key`, title, album, track number, format and `path` — the file as the Roon Core sees it (on the Core\'s storage), plus `duplicates` when Roon has the same track twice. The data behind Roon\'s own Export. Use it to link Roon\'s tracks to files, e.g. to join with data the user keeps per file. Streaming tracks (Qobuz, TIDAL) have no path.',
+    inputSchema: {
+      album: z.string().optional().describe('An album key.'),
+      artist: z.string().optional().describe('An artist key.'),
+      tracks: z.array(z.string()).max(500).optional().describe('Track keys.'),
+    },
+    annotations: READ,
+  }, ({ album, artist, tracks }) => run(() => lib.trackFiles({ album, artist, tracks })));
+
   reg('roon_review', {
     title: 'Album review',
     description: 'The review Roon shows on an album\'s page, in full, with its author — by album `key`. When the user asks for the review ("what does Roon say about this album", "show me the review"), they want to read the review itself: show the text complete and exactly as returned, as a quote with the author\'s name — no paraphrase or shortening unless they ask for a summary, and don\'t go to the web for it. `wikipedia: true` adds the album\'s Wikipedia text; it also comes by itself when Roon has no review of its own. `max_chars` only when a shorter excerpt is asked for.',
