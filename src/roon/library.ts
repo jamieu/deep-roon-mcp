@@ -391,6 +391,6 @@ export async function trackFiles(a: { album?: string; artist?: string; tracks?: 
     const gevraagd = a.tracks?.length ?? 0, ontbreekt = gevraagd ? gevraagd - tracks.length : 0;
     const zonder = tracks.filter((t) => !t.path).length + Math.max(0, ontbreekt);
     const of = gevraagd || tracks.length;
-    return { tracks, ...(zonder ? { note: `${zonder} of ${of} ${of === 1 ? 'track has' : 'tracks have'} no file (streaming tracks, or not on this Core's storage)` } : {}) };
+    return { tracks, ...(zonder ? { note: `${zonder} of ${of} ${of === 1 ? 'track' : 'tracks'} ${zonder === 1 ? 'has' : 'have'} no file (streaming tracks, or not on this Core's storage)` } : {}) };
   });
 }
