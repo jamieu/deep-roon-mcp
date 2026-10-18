@@ -10,7 +10,13 @@
 // copies that reconnect by themselves then push each other out for ever — measured 12 Oct 2026, every 5, 15, 60, 300 s,
 // and a question that came in between was told to enable the extension. So after a close there is no reconnect of its
 // own: the connection opens again when a tool needs it, and whoever asks has it.
+//
+// Unless the Core is gone (0.4.7, issue #1 — a router reboot took the LAN away for 1m40s and the extension stayed unpaired
+// for hours): a takeover closes the connection while the Core answers; a network interruption or a Core restart closes it
+// while it doesn't. So at a close we knock on the Core's port. No answer: retry in the background (5 s, doubling, at most
+// 5 min) until it answers, then reconnect — the stored token pairs it again by itself. An answer: as before.
 import fs from 'fs';
+import net from 'net';
 import os from 'os';
 import path from 'path';
 import RoonApi from 'node-roon-api';
@@ -93,9 +99,47 @@ function connect(): void {
     host: core.host, port: core.port,
     onclose: () => {
       open = false; transport = null; zones.clear(); zonesIn = false;
-      log('the extension connection closed (another copy of Deep Roon MCP may have taken it over) — it opens again when a tool needs it');
+      void afterClose();
+    },
+    // A connection that never opened gets no onclose from node-roon-api, only an error — and `open` stayed true, so neither
+    // a tool nor the retry ever tried again. Before pairing, an error means: not connected.
+    onerror: () => {
+      if (transport) return;   // an open, paired connection: its onclose follows
+      open = false;
+      void afterClose();
     },
   });
+}
+
+/** Does the Core answer on its port? A plain TCP knock, nothing more. */
+function reachable(ms = 3000): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (!core) return resolve(false);
+    const sock = net.connect({ host: core.host, port: core.port });
+    const done = (ok: boolean) => { sock.destroy(); resolve(ok); };
+    sock.setTimeout(ms, () => done(false));
+    sock.once('connect', () => done(true));
+    sock.once('error', () => done(false));
+  });
+}
+
+let retrying = false;
+async function afterClose(): Promise<void> {
+  if (retrying) return;
+  if (await reachable()) {
+    log('the extension connection closed while the Core answers — probably another copy of Deep Roon MCP took it over; it opens again when a tool needs it');
+    return;
+  }
+  retrying = true;
+  log('the extension connection closed and the Core doesn\'t answer (network or Core restart) — reconnecting when it\'s back');
+  let pause = 5000;
+  while (!open) {
+    await new Promise((r) => setTimeout(r, pause).unref());
+    if (open) break;
+    if (await reachable()) { log('the Core answers again — reconnecting'); connect(); break; }
+    pause = Math.min(pause * 2, 300000);
+  }
+  retrying = false;
 }
 
 /** The paired transport, waiting up to `ms` for it — else what the user has to do. */
