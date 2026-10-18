@@ -26,7 +26,6 @@ export const strings = (c: C, v: Any): string[] => { const o = obj(c, v); return
 /** IsFavorite and IsListenLater are per profile: a count, then the profiles. 00 = nobody. */
 export const flag = (v: Any): boolean => v === true || (Buffer.isBuffer(v) && v.length > 1 && v[0] >= 1);
 
-/** The image key of an object's picture (the Core serves it on :9330/api/image/<key>). */
 /** The keys of an object's image list (Playlist/Work/GenreMixDescription `Images`): up to `max`, for a cover mosaic (13 Oct 2026). */
 export function imageKeys(c: C, o: Any, name = 'Images', max = 4): string[] {
   return items(c, field(o, name)).map((im) => { const m = /^broker:\/\/\/image\/([^.]+)\./.exec(String(field(im, 'Url') ?? '')); return m ? m[1] : ''; }).filter(Boolean).slice(0, max);
@@ -36,6 +35,8 @@ export function imageUrls(c: C, o: Any, name = 'Images', max = 4): string[] {
   // TIDAL hands some covers as plain http; the same picture is there over https, and an app's transport policy wants that.
   return items(c, field(o, name)).map((im) => String(field(im, 'Url') ?? '').replace(/^http:\/\//, 'https://')).filter((u) => /^https:\/\//.test(u)).slice(0, max);
 }
+/** The internal image key of an object's picture (e.g. "doicaaaa"): the Core serves it on :9330/image/<key>.jpg —
+ *  not on /api/image/, which takes the official API's keys only. run() adds the URL as `image_url`. */
 export function imageKey(c: C, o: Any, name = 'Image'): string | undefined {
   const url = field(obj(c, field(o, name)), 'Url');
   const m = /^broker:\/\/\/image\/([^.]+)\./.exec(String(url ?? ''));

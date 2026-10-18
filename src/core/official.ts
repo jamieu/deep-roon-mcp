@@ -152,6 +152,8 @@ export async function paired(ms = 8000): Promise<any> { // eslint-disable-line @
 }
 
 export const officialZones = (): OfficialZone[] => [...zones.values()];
+/** The Core's web address (the port of its extension API, 9330 by default): where it serves covers. */
+export const coreWeb = (): string | null => (core ? `http://${core.host}:${core.port}` : null);
 export const isPaired = (): boolean => !!transport;
 
 /** Paired, and the zones in (they come a moment after the pairing): what the volume and the state need. */

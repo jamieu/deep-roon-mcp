@@ -200,6 +200,12 @@ status; it holds no secrets).
 - Several clients at once (Claude Desktop and Claude Code, or ChatGPT next to them) work: Roon keeps one connection
   per extension, and the client that asks a question takes it over for that moment.
 - Album, track and artist keys stay valid between calls.
+- Covers: every `image` key comes with an `image_url` to load it from your Core. Roon has two kinds of image keys that
+  aren't interchangeable. Deep Roon reads Roon's internal library, so most keys are internal ones (short, like
+  `doicaaaa`): the Core serves them at `http://<core>:9330/image/<key>.jpg`, or scaled at `/image/<key>.300.jpg` (any
+  width). The zones (`roon_now_playing`) come from Roon's official extension API, whose keys (long hex) are served at
+  `/api/image/<key>?scale=fit&width=600&height=600`. The URL uses the Core's address as Deep Roon sees it — when Deep
+  Roon runs on the Core's own machine that is `127.0.0.1`; from another device, put the Core's IP there.
 - The log goes to stderr (your MCP client keeps it).
 - At the start it asks GitHub once whether a newer release is out (`DEEP_ROON_NO_UPDATE_CHECK=1` turns that off). Nothing
   else leaves your network except what your client sends to its model.
