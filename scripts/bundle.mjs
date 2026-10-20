@@ -46,6 +46,7 @@ const manifest = {
         ROON_HOST: '${user_config.roon_host}',
         DEEP_ROON_TOOLS: '${user_config.essentials}',
         DEEP_ROON_INTERNAL: '${user_config.internal_protocol}',
+        DEEP_ROON_READ_ONLY: '${user_config.read_only}',
       },
     },
   },
@@ -61,6 +62,10 @@ const manifest = {
     internal_protocol: {
       type: 'boolean', title: 'Use Roon\'s internal protocol', required: false, default: true,
       description: 'Off: only Roon\'s official extension API — zones, playback, volume, grouping. No search, reviews, Focus or history.',
+    },
+    read_only: {
+      type: 'boolean', title: 'Read-only library', required: false, default: false,
+      description: 'On: Deep Roon never changes your Roon library — no playlists, hearts, Listen Later, library additions or DSP changes. Playing music still works.',
     },
   },
   tools: tools.map((t) => ({ name: t.name, description: t.title ?? t.description?.split('. ')[0] ?? t.name })),

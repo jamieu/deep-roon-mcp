@@ -22,7 +22,7 @@ server of its own and sends nothing anywhere else. What you ask goes to your MCP
 
 ## Status
 
-Version 0.4: fifty-nine tools. Qobuz, TIDAL or both — whatever is signed in on your Core.
+Version 0.5: fifty-nine tools (fifty-three with a read-only library). Qobuz, TIDAL or both — whatever is signed in on your Core.
 
 **Reading** — changes nothing in Roon:
 
@@ -80,7 +80,14 @@ Version 0.4: fifty-nine tools. Qobuz, TIDAL or both — whatever is signed in on
 | `roon_play_mix` | One of today's Daily Mixes |
 | `roon_play_radio` | A Live Radio station on a zone |
 
-**Changing your library or sound** — only on your request; each one reads the result back and says if Roon didn't follow:
+**Changing your library or sound** — only on your request; each one reads the result back and says if Roon didn't follow.
+
+> **A word of care.** These six tools write into your Core's library and settings through Roon's *internal* protocol —
+> the same wiring Roon's own apps use, but not an API Roon Labs supports for others. Deep Roon is careful with it (one
+> change at a time, read back, nothing in bulk), but a Roon update can change that wiring under it. **Keep a recent backup
+> of your Roon database** (Roon › Settings › Backups) before you let an assistant change things — and if you only want to
+> ask and listen, switch on **Read-only library** below: then these six tools aren't there at all.
+
 
 | Tool | What it does |
 |---|---|
@@ -111,6 +118,7 @@ The settings (Claude Desktop › Settings › Extensions › Deep Roon MCP):
 | Roon Core address | Empty: found on your network. Fill in the Core's address for another subnet or a private VPN (Tailscale) |
 | Essentials only | Seventeen tools instead of fifty-nine, for small models |
 | Use Roon's internal protocol | Off: only the official API — zones, playback, volume, grouping; no search, reviews, Focus or history |
+| Read-only library | On: Deep Roon never changes your library — no playlists, hearts, Listen Later, library additions or DSP. Playing still works |
 
 ### Other clients
 
@@ -136,7 +144,7 @@ or by hand in `~/.codex/config.toml`:
 [mcp_servers.deep-roon]
 command = "npx"
 args = ["-y", "deep-roon-mcp"]
-# env = { ROON_HOST = "", DEEP_ROON_TOOLS = "", DEEP_ROON_INTERNAL = "" }
+# env = { ROON_HOST = "", DEEP_ROON_TOOLS = "", DEEP_ROON_INTERNAL = "", DEEP_ROON_READ_ONLY = "" }
 ```
 
 ChatGPT on the web can't run a server on your computer — use the desktop app.
@@ -149,14 +157,15 @@ ChatGPT on the web can't run a server on your computer — use the desktop app.
     "deep-roon": {
       "command": "npx",
       "args": ["-y", "deep-roon-mcp"],
-      "env": { "ROON_HOST": "", "DEEP_ROON_TOOLS": "", "DEEP_ROON_INTERNAL": "" }
+      "env": { "ROON_HOST": "", "DEEP_ROON_TOOLS": "", "DEEP_ROON_INTERNAL": "", "DEEP_ROON_READ_ONLY": "" }
     }
   }
 }
 ```
 
-The same three settings as environment variables: `ROON_HOST` (the Core's address, empty = find it), `DEEP_ROON_TOOLS=essentials`,
-`DEEP_ROON_INTERNAL=off`. Leave out what you don't need. VS Code calls the block `"servers"` instead of `"mcpServers"`.
+The same settings as environment variables: `ROON_HOST` (the Core's address, empty = find it), `DEEP_ROON_TOOLS=essentials`,
+`DEEP_ROON_INTERNAL=off`, `DEEP_ROON_READ_ONLY=library` (nothing changes the library; playing works) or `DEEP_ROON_READ_ONLY=all`
+(Deep Roon only looks: no playing, queueing or zone changes either). Leave out what you don't need. VS Code calls the block `"servers"` instead of `"mcpServers"`.
 
 Then, once, in Roon: Settings › Extensions › **Enable** next to "Deep Roon MCP". Until then the tools say so.
 
