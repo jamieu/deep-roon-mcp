@@ -2,7 +2,7 @@
 import { isRef } from '../intern';
 import { withCore, RoonError } from '../core/session';
 import { officialReady, officialZone } from '../core/official';
-import { Any, C, clean, dotnetDate, duration, field, items, localTime, obj } from './graph';
+import { Any, C, clean, dotnetDate, duration, field, items, localTime, obj, trackArtist } from './graph';
 
 /** The outputs there are now: per name only the current one. A Squeezebox player that reconnects leaves its old output
  *  in the graph; prefer an output whose zone has a track, then one that plays or pauses, then the newest. */
@@ -85,6 +85,7 @@ export async function nowPlaying() {
       if (tr && field(tr, 'Title') && !stream) {
         const al = obj(c, field(tr, 'Album'));
         r.title = field(tr, 'Title'); r.artist = clean(field(al, 'PerformedBy')); r.album = field(al, 'Title');
+        trackArtist(c, r, tr, al);
         const tk = field(tr, 'TrackId'); if (tk !== undefined && tk !== null) r.track_key = String(tk);   // keys, for roon_album and a client that opens the album
         const ak = field(al, 'AlbumId'); if (ak !== undefined && ak !== null) r.album_key = String(ak);
         const f = field(tr, 'Format'); if (f) r.format = f;

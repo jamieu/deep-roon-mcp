@@ -4,7 +4,7 @@ import { Arg, buildArgs } from '../intern/proto/serializer';
 import { BinaryReader } from '../intern/proto/reader';
 import { BinaryWriter } from '../intern/proto/writer';
 import { withCore, RoonError } from '../core/session';
-import { Any, C, albumRow, clean, dateText, duration, field, flag, imageKey, items, obj, partialList, refList, resultRow, short, strings, untilField, untilLoaded, wait } from './graph';
+import { Any, C, albumRow, clean, dateText, duration, field, flag, imageKey, items, obj, partialList, refList, resultRow, short, strings, untilField, untilLoaded, wait, trackArtist } from './graph';
 
 // ---- the streaming services ----
 export type Service = 'qobuz' | 'tidal';
@@ -211,6 +211,7 @@ export async function album(key: string, withCredits: boolean) {
       if (discs) r.disc = field(t, 'MediaNumber') ?? 1;
       const n = field(t, 'TrackNumber'); if (n != null) r.n = n;
       r.title = field(t, 'Title');
+      trackArtist(c, r, t, al);
       const l = field(t, 'LengthSeconds'); if (typeof l === 'number') { r.length = duration(l); seconds += l; }
       if (formats && field(t, 'Format')) r.format = field(t, 'Format');
       if (flag(field(t, 'IsFavorite'))) r.favorite = true;

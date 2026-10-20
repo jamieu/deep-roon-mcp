@@ -161,6 +161,7 @@ export function resultRow(c: C, o: Any): Any {
   if (t === 'TrackLite' || t === 'Track') {
     const al = obj(c, field(o, 'Album'));
     const r: Any = { kind: 'track', key: String(field(o, 'TrackId') ?? ''), title: field(o, 'Title') ?? '', artist: clean(field(al, 'PerformedBy') ?? field(o, 'PerformedBy') ?? '') };
+    trackArtist(c, r, o, al);
     const album = field(al, 'Title'); if (album) r.album = album;
     const ak = field(al, 'AlbumId'); if (ak !== undefined && ak !== null) r.album_key = String(ak);
     const f = field(o, 'Format'); if (f) r.format = f;
@@ -170,4 +171,21 @@ export function resultRow(c: C, o: Any): Any {
     return r;
   }
   return { kind: t, title: field(o, 'Title') ?? field(o, 'Name') ?? '' };
+}
+
+/** The track's own artist (0.4.9, a forum tester: compilations whose album artist is "Various Artists"). A Track has no
+ *  artist field of its own; Roon keeps it in the track's Credits as the credits of the kind "main artist" (Type 3), the
+ *  same kinds as the album's credits. Returned as `track_artist` only where it differs from the album artist. */
+export function trackArtist(c: C, r: Any, tr: Any, al: Any): void {
+  const namen: string[] = [];
+  for (const cr of items(c, field(tr, 'Credits'))) {
+    if (field(cr, 'Type') !== 3) continue;
+    const n = field(obj(c, field(cr, 'Performer')), 'Name');
+    if (typeof n === 'string' && n && !namen.includes(n)) namen.push(n);
+  }
+  // Only where it adds something: not when the album artist is among them ("Miles Davis Quintet, Miles Davis" on a Miles
+  // Davis album), nor when every name is part of the album artist ("Brad Mehldau" on a Brad Mehldau Trio album).
+  const albumArtiest = clean(field(al, 'PerformedBy') ?? '');
+  if (!namen.length || namen.includes(albumArtiest) || namen.every((n) => albumArtiest.includes(n))) return;
+  r.track_artist = namen.join(', ');
 }

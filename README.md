@@ -200,6 +200,9 @@ status; it holds no secrets).
 - Several clients at once (Claude Desktop and Claude Code, or ChatGPT next to them) work: Roon keeps one connection
   per extension, and the client that asks a question takes it over for that moment.
 - Album, track and artist keys stay valid between calls.
+- Track artists: a track's `artist` is its album's artist (on a compilation that is often "Various Artists"). Where the
+  track's own main artist differs, it comes as `track_artist` — in search, `roon_tracks`, albums, playlists, the queue
+  and what plays now. Roon keeps it in the track's credits.
 - Covers: every `image` key comes with an `image_url` to load it from your Core. Roon has two kinds of image keys that
   aren't interchangeable. Deep Roon reads Roon's internal library, so most keys are internal ones (short, like
   `doicaaaa`): the Core serves them at `http://<core>:9330/image/<key>.jpg`, or scaled at `/image/<key>.300.jpg` (any

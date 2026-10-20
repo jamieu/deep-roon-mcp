@@ -8,7 +8,7 @@ import { formatMethodSignature } from '../intern/catalog/signature';
 import { withCore, fresh, RoonError } from '../core/session';
 import { officialZone } from '../core/official';
 import { log } from '../core/log';
-import { Any, C, albumRow, clean, dotnetDate, duration, field, flag, imageKeys, items, localTime, obj, resultRow, short, untilField, untilLoaded, wait, imageKey } from './graph';
+import { Any, C, albumRow, clean, dotnetDate, duration, field, flag, imageKeys, items, localTime, obj, resultRow, short, untilField, untilLoaded, wait, imageKey, trackArtist } from './graph';
 import { findAlbum, findTracks, fullAlbum, performer, shelf, streaming } from './library';
 import * as tidal from './tidal';
 import { playlistKey } from './tidal';
@@ -65,6 +65,7 @@ export async function playlist(key: string, limit: number) {
     return { name: field(p, 'Name'), total: list.length, rows: list.slice(0, n).map((x, i) => {
       const tr = obj(c, field(obj(c, x), 'Track')); const al = obj(c, field(tr, 'Album'));
       const r: Any = { n: i + 1, key: String(field(tr, 'TrackId') ?? ''), title: field(tr, 'Title') ?? null, artist: clean(field(al, 'PerformedBy') ?? ''), album: field(al, 'Title') ?? undefined };
+      trackArtist(c, r, tr, al);
       // For a playlist page (13 Oct 2026): the album's key and cover, and the length.
       const ak = field(al, 'AlbumId'); if (ak !== undefined && ak !== null) r.album_key = String(ak);
       const im = imageKey(c, al); if (im) r.image = im;

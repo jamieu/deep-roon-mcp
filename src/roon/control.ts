@@ -8,7 +8,7 @@ import { formatMethodSignature } from '../intern/catalog/signature';
 import { withCore, findTarget, RoonError } from '../core/session';
 import { officialZone } from '../core/official';
 import { log } from '../core/log';
-import { Any, C, clean, duration, field, imageKey, items, obj, short, wait } from './graph';
+import { Any, C, clean, duration, field, imageKey, items, obj, short, wait, trackArtist } from './graph';
 import { findAlbum, findTracks } from './library';
 import { findZone } from './zones';
 
@@ -183,6 +183,7 @@ function queueRow(c: C, oid: bigint): Any {
   const tr = obj(c, field(items(c, field(c.graph.getObject(oid), 'Tracks'))[0], 'Track'));
   const al = obj(c, field(tr, 'Album'));
   const r: Any = { title: field(tr, 'Title') ?? null, artist: clean(field(al, 'PerformedBy') ?? '') };
+  trackArtist(c, r, tr, al);
   const album = field(al, 'Title'); if (album) r.album = album;
   const l = field(tr, 'LengthSeconds'); if (typeof l === 'number') r.length = duration(l);
   const k = field(tr, 'TrackId'); if (k !== undefined && k !== null) r.key = String(k);
