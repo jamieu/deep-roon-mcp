@@ -11,14 +11,14 @@ import { findTracks } from './library';
 const PAGE = 500, BUDGET_MS = 45_000;
 const at = (e: { playedAt: string }) => Date.parse(e.playedAt);
 
-export async function history(limit: number, offset = 0, before?: string) {
+export async function history(limit: number, offset = 0, before?: string, since?: string) {
   return withCore(async (first) => {
     const c = first.graph.findByType('HistoryPlay').length > 0 ? await fresh() : first;
     const n = Math.min(Math.max(0, limit), 500), skip = Math.max(0, offset);
     const cutoff = before ? Date.parse(before) : null;
     // `before` goes to Roon itself (MaxPlayDate): the query starts at that date, however far back.
     const all = await exportPlayHistory(c, { limit: skip + n, pageSize: PAGE, timeoutMs: 15_000, deadline: Date.now() + BUDGET_MS,
-      maxDate: cutoff === null ? undefined : new Date(cutoff) });
+      maxDate: cutoff === null ? undefined : new Date(cutoff), minDate: since ? new Date(Date.parse(since)) : undefined });
     const picked = (cutoff === null ? all.events : all.events.filter((e) => at(e) < cutoff)).slice(skip, skip + n);
     const out = { ...all, events: picked };
     // The album and its cover per play (13 Oct 2026, Rosso's history): the tracks by their keys, in one question — at most
@@ -46,13 +46,13 @@ export async function history(limit: number, offset = 0, before?: string) {
 }
 
 /** Most played albums, artists or tracks over the whole history; a play counts when at least half was heard. */
-export async function top(what: 'albums' | 'artists' | 'tracks', limit: number, since?: string) {
+export async function top(what: 'albums' | 'artists' | 'tracks', limit: number, since?: string, until?: string) {
   return withCore(async (first) => {
     const c = first.graph.findByType('HistoryPlay').length > 0 ? await fresh() : first;
     const from = since ? Date.parse(since) : null;
     // The whole history (no longer the newest 20,000); with `since` it stops at the first page older than that date.
     const out = await exportPlayHistory(c, { limit: Number.MAX_SAFE_INTEGER, pageSize: PAGE, timeoutMs: 15_000, deadline: Date.now() + BUDGET_MS,
-      minDate: from === null ? undefined : new Date(from) });
+      minDate: from === null ? undefined : new Date(from), maxDate: until ? new Date(Date.parse(until)) : undefined });
     closeSoon('after the history');
     const count = new Map<string, { plays: number; last: number; title?: string; album?: string; artist: string }>();
     let counted = 0, earliest: number | null = null;

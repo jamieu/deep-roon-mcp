@@ -105,15 +105,17 @@ export function registerReadTools(server: McpServer, internal = true): void {
 
   reg('roon_history', {
     title: 'Play history',
-    description: 'What was played in Roon, newest first — Roon\'s own play history, with how much of each track was heard. Goes back as far as Roon\'s history does: `before` (YYYY-MM-DD) gives the plays before that date (e.g. "what did I play in March 2019": before 2019-04-01), `offset` skips the newest ones. For "most played" questions use roon_top instead of counting this.',
-    inputSchema: { limit: limit(300, 30), offset: z.number().int().min(0).optional(), before: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Only plays before this date (YYYY-MM-DD).') },
+    description: 'What was played in Roon, newest first — Roon\'s own play history, with how much of each track was heard. Goes back as far as Roon\'s history does — Roon filters by date itself: `since` and `before` (YYYY-MM-DD) give the plays in that window (e.g. "what did I play in March 2019": since 2019-03-01, before 2019-04-01; up to 500 per call, `offset` for the next ones). For "most played" questions use roon_top instead of counting this.',
+    inputSchema: { limit: limit(500, 30), offset: z.number().int().min(0).optional(), since: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Only plays from this date on (YYYY-MM-DD).'),
+      before: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Only plays before this date (YYYY-MM-DD).') },
     annotations: READ,
-  }, ({ limit: n, offset, before }) => run(() => hist.history(n ?? 30, offset ?? 0, before)));
+  }, ({ limit: n, offset, since, before }) => run(() => hist.history(n ?? 30, offset ?? 0, before, since)));
 
   reg('roon_top', {
     title: 'Most played',
-    description: 'The most played albums, artists or tracks in Roon, counted over the WHOLE play history (a play counts when at least half the track was heard). Use this for "most listened" questions — don\'t tally roon_history yourself. `since` (YYYY-MM-DD) limits the period.',
-    inputSchema: { what: z.enum(['albums', 'artists', 'tracks']).optional(), limit: limit(100, 20), since: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Only plays from this date on (YYYY-MM-DD).') },
+    description: 'The most played albums, artists or tracks in Roon, counted over the WHOLE play history (a play counts when at least half the track was heard). Use this for "most listened" questions — don\'t tally roon_history yourself. `since` and `until` (YYYY-MM-DD) limit the period — Roon filters by date itself, however far back: "what did I play most in March 2019" is since 2019-03-01, until 2019-04-01.',
+    inputSchema: { what: z.enum(['albums', 'artists', 'tracks']).optional(), limit: limit(100, 20), since: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Only plays from this date on (YYYY-MM-DD).'),
+      until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Only plays before this date (YYYY-MM-DD).') },
     annotations: READ,
-  }, ({ what, limit: n, since }) => run(() => hist.top(what ?? 'albums', n ?? 20, since)));
+  }, ({ what, limit: n, since, until }) => run(() => hist.top(what ?? 'albums', n ?? 20, since, until)));
 }
