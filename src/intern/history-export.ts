@@ -47,6 +47,14 @@ export interface HistoryExportOptions {
   pageSize?: number;
   timeoutMs?: number;
   pollIntervalMs?: number;
+  /** Stop paging after this moment (epoch ms) and return what came: `complete` says whether it got everything. */
+  deadline?: number;
+  /** Stop paging once this says enough (the events so far, newest first per page). */
+  enough?: (events: HistoryEvent[]) => boolean;
+  /** Roon's own date filter (HistoryQueryCriteria::MinPlayDate / MaxPlayDate): only plays in this range — the query
+   *  starts there instead of paging through everything newer (0.5.1). */
+  minDate?: Date;
+  maxDate?: Date;
 }
 
 export interface HistoryEvent {
@@ -63,6 +71,8 @@ export interface HistoryExportResult {
   events: HistoryEvent[];
   skipped: number;
   duplicates: number;
+  /** False when the deadline or `enough` stopped the paging before the target. */
+  complete?: boolean;
 }
 
 interface HistorySnapshot {
@@ -163,7 +173,7 @@ function assembleEvent(client: HistoryExportClient, play: RoonObject): HistoryEv
   return event;
 }
 
-function validateOptions(options: HistoryExportOptions): Required<HistoryExportOptions> {
+function validateOptions(options: HistoryExportOptions): Required<Omit<HistoryExportOptions, 'deadline' | 'enough' | 'minDate' | 'maxDate'>> {
   const pageSize = options.pageSize ?? 100;
   const timeoutMs = options.timeoutMs ?? 5000;
   const pollIntervalMs = options.pollIntervalMs ?? 150;
@@ -198,9 +208,19 @@ export async function exportPlayHistory(
     throw new Error('history export requires a fresh client graph with no HistoryPlay objects');
   }
 
-  const criteria = inlineStruct(
-    client.remoting.defineType('Sooloos.Broker.Api.HistoryQueryCriteria', [])
-  );
+  // A .NET DateTime? as Roon reads it: present, then DateTime.ToBinary — the ticks with Kind = Utc in the top bits.
+  const dateField = (which: 'MinPlayDate' | 'MaxPlayDate', d: Date) => ({
+    name: `System.DateTime? Sooloos.Broker.Api.HistoryQueryCriteria::${which}`,
+    propType: PropertyType.NullableDateTime,
+    value: new BinaryWriter().boolean(true).long((BigInt(d.getTime()) * 10000n + UNIX_EPOCH_TICKS) | (1n << 62n)).toBuffer(),
+  });
+  const dates = [
+    ...(options.minDate ? [dateField('MinPlayDate', options.minDate)] : []),
+    ...(options.maxDate ? [dateField('MaxPlayDate', options.maxDate)] : []),
+  ];
+  const criteria = dates.length
+    ? client.structArg('Sooloos.Broker.Api.HistoryQueryCriteria', dates)
+    : inlineStruct(client.remoting.defineType('Sooloos.Broker.Api.HistoryQueryCriteria', []));
   const params = client.structArg('Sooloos.Broker.Api.VirtualQueryParameters', [
     {
       name: 'int Sooloos.Broker.Api.VirtualQueryParameters::PageSize',
@@ -244,7 +264,10 @@ export async function exportPlayHistory(
       }
       return plays.size;
     };
+    let complete = true;
     for (let page = 0; page < Math.ceil(target / pageSize); page++) {
+      // A deadline or "enough" (0.5.1): a long history (tens of thousands of plays since 2015) doesn't fit in one answer.
+      if (page > 0 && ((options.deadline && Date.now() > options.deadline) || (options.enough && options.enough(snapshots.map((x) => x.event).filter((e): e is HistoryEvent => !!e))))) { complete = false; break; }
       let acquired = false;
       try {
         const retained = await client.remoting.callMethod(
@@ -326,7 +349,7 @@ export async function exportPlayHistory(
       events.push(snapshot.event);
       if (events.length >= target) break;
     }
-    return { total, events, skipped, duplicates };
+    return { total, events, skipped, duplicates, complete };
   } finally {
     client.remoting.callMethodNoReply(queryOid, SIG_DISPOSE, Buffer.alloc(0));
   }

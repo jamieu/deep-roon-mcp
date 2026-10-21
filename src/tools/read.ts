@@ -105,10 +105,10 @@ export function registerReadTools(server: McpServer, internal = true): void {
 
   reg('roon_history', {
     title: 'Play history',
-    description: 'What was played in Roon, newest first — Roon\'s own play history, with how much of each track was heard. For "most played" questions use roon_top instead of counting this.',
-    inputSchema: { limit: limit(300, 30) },
+    description: 'What was played in Roon, newest first — Roon\'s own play history, with how much of each track was heard. Goes back as far as Roon\'s history does: `before` (YYYY-MM-DD) gives the plays before that date (e.g. "what did I play in March 2019": before 2019-04-01), `offset` skips the newest ones. For "most played" questions use roon_top instead of counting this.',
+    inputSchema: { limit: limit(300, 30), offset: z.number().int().min(0).optional(), before: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Only plays before this date (YYYY-MM-DD).') },
     annotations: READ,
-  }, ({ limit: n }) => run(() => hist.history(n ?? 30)));
+  }, ({ limit: n, offset, before }) => run(() => hist.history(n ?? 30, offset ?? 0, before)));
 
   reg('roon_top', {
     title: 'Most played',
