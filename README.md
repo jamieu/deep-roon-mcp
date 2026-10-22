@@ -39,6 +39,7 @@ Version 0.5: fifty-nine tools (fifty-three with a read-only library). Qobuz, TID
 | `roon_status` | How Deep Roon MCP stands: Core, pairing, internal protocol, self-test, newer version |
 | `roon_zones` | Roon's zones and groups |
 | `roon_now_playing` | What plays in each zone, with the volume |
+| `roon_waveform` | The waveform of what plays in a zone, as Roon draws it in its seek bar (local files, and streams once played) |
 | `roon_queue` | A zone's queue, numbered (1 is what plays) |
 | `roon_cover` | The cover of what plays, as an image |
 | `roon_history` | Roon's play history, newest first |

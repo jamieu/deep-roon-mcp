@@ -89,6 +89,17 @@ export function registerReadTools(server: McpServer, internal = true): void {
     annotations: READ,
   }, () => run(() => (internal ? zn.zones() : off.zones())));
 
+  reg('roon_waveform', {
+    title: 'Waveform',
+    description: 'The waveform of the track that plays in a zone, as Roon draws it in its seek bar: `waveform` is a list of heights from 0 to 1 (`points` of them, default 100), left to right over the track, with the `position` and `length`. Roon makes one for a local file when it has analysed it, and for a stream (Qobuz, TIDAL) the first time it plays; until then `waveform` is null. Only for what plays now, not for any track.',
+    inputSchema: {
+      zone: z.string().min(1).describe('The zone, by (part of) its name.'),
+      points: z.number().int().min(10).max(2000).optional().describe('How many heights (default 100).'),
+      raw: z.boolean().optional().describe('The values as the Core sends them, for debugging.'),
+    },
+    annotations: READ,
+  }, ({ zone, points, raw }) => run(() => zn.waveform(zone, points ?? 100, raw === true)));
+
   reg('roon_now_playing', {
     title: 'Now playing in Roon',
     description: 'What plays in Roon, per zone: state (playing, loading, paused, stopped), the track with album, artist and format, the position, how many tracks are left in the queue, shuffle, repeat, Roon Radio and a sleep timer. Read this before saying anything about what Roon plays — it changes all the time.',

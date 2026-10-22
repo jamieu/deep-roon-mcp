@@ -103,3 +103,57 @@ export async function nowPlaying() {
     return { zones: out };
   });
 }
+
+/** The ints of a DataList<int>: an object in the graph with `$items`, the items by value, or a length list in a buffer. */
+function ints(c: C, v: Any): number[] | null {
+  const o = obj(c, v);
+  const list = o?.fields?.$items ?? o?.$items ?? (Array.isArray(o) ? o : null);
+  if (Array.isArray(list)) return list.map(Number).filter((n) => Number.isFinite(n));
+  return null;
+}
+
+/** Per zone the track and the waveform it last had: right after a track change the zone still carries the previous
+ *  track's waveform (measured 22 Oct 2026: at 0:07 of "Go Your Own Way" the numbers of the track before; at 0:28 its own,
+ *  whole). The same numbers under another track are the old ones. */
+const lastWave = new Map<string, { track: string; sig: string }>();
+
+/** The waveform of what plays in a zone (Zone.WaveformData, 22 Oct 2026 — asked for on the Roon forum). Roon draws it
+ *  in its seek bar: for a local file from its own analysis, for a stream from the first time it played (then stored).
+ *  `points` buckets it to a length a client can draw; `raw` returns the values as the Core sends them. */
+export async function waveform(zone: string, points = 100, raw = false) {
+  return withCore(async (c) => {
+    const zn = findZone(c, zone);
+    const z = c.graph.getObject(zn.oid);
+    const v = field(z, 'WaveformData');
+    const vals = ints(c, v);
+    const np = obj(c, field(z, 'NowPlaying'));
+    const tr = obj(c, field(items(c, field(np, 'Tracks'))[0], 'Track'));
+    const r: Any = { zone: zn.name };
+    if (field(tr, 'Title')) r.title = field(tr, 'Title');
+    if (raw) {
+      r.shape = v === undefined ? 'absent' : isRef(v) ? 'ref' : Buffer.isBuffer(v) ? `buffer ${v.length}` : typeof v;
+      if (Buffer.isBuffer(v)) r.bytes = [...v.subarray(0, 64)];
+      if (isRef(v)) r.object = Object.keys(obj(c, v)?.fields ?? {});
+      if (vals) { r.count = vals.length; r.values = vals; }
+      return r;
+    }
+    const none = 'No waveform for this track yet: Roon makes one for a stream the first time it plays (within half a minute or so), and for a local file when it has analysed it.';
+    if (!vals?.length) { r.waveform = null; r.note = none; return r; }
+    const track = String(field(tr, 'TrackId') ?? field(tr, 'Title') ?? ''), sig = vals.join(','), was = lastWave.get(String(zn.oid));
+    if (was && was.track !== track && was.sig === sig) { r.waveform = null; r.note = none; return r; }
+    lastWave.set(String(zn.oid), { track, sig });
+    // Measured 22 Oct 2026: 2000 values of 0–255, in pairs (the top and bottom of the bar, so far always equal) — 1000
+    // steps over the track. One value per pair (the larger), on Roon's own scale; a bucket shows its mean (the peak
+    // made a loud master one flat bar of ones).
+    const steps = Array.from({ length: Math.floor(vals.length / 2) }, (_, i) => Math.max(vals[2 * i], vals[2 * i + 1]));
+    const n = Math.max(1, Math.min(points, steps.length)), per = steps.length / n;
+    r.points = n;
+    r.waveform = Array.from({ length: n }, (_, i) => {
+      let som = 0, k = 0; for (let j = Math.floor(i * per); j < Math.max(Math.floor((i + 1) * per), Math.floor(i * per) + 1); j++) { som += steps[j]; k++; }
+      return Math.round((som / k / 255) * 100) / 100;
+    });
+    const pos = field(z, 'SeekPosition'); if (typeof pos === 'number') r.position = duration(pos);
+    const l = field(tr, 'LengthSeconds'); if (typeof l === 'number') r.length = duration(l);
+    return r;
+  });
+}
