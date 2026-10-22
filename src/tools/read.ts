@@ -91,7 +91,7 @@ export function registerReadTools(server: McpServer, internal = true): void {
 
   reg('roon_waveform', {
     title: 'Waveform',
-    description: 'The waveform of the track that plays in a zone, as Roon draws it in its seek bar: `waveform` is a list of heights from 0 to 1 (`points` of them, default 100), left to right over the track, with the `position` and `length`. Roon makes one for a local file when it has analysed it, and for a stream (Qobuz, TIDAL) the first time it plays; until then `waveform` is null. Only for what plays now, not for any track.',
+    description: 'The waveform of the track that plays in a zone, as Roon draws it in its seek bar: `waveform` is a list of heights from 0 to 1 (`points` of them, default 100), left to right over the track, with the `position` and `length`. Draw it as Roon does: each height a thin bar mirrored around a centre line (as far above as below), the part before `position` in a colour and the rest grey. Roon makes one for a local file when it has analysed it, and for a stream (Qobuz, TIDAL) the first time it plays; until then `waveform` is null. Only for what plays now, not for any track.',
     inputSchema: {
       zone: z.string().min(1).describe('The zone, by (part of) its name.'),
       points: z.number().int().min(10).max(2000).optional().describe('How many heights (default 100).'),
