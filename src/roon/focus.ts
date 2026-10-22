@@ -7,7 +7,7 @@ import { BinaryWriter } from '../intern/proto/writer';
 import { formatMethodSignature } from '../intern/catalog/signature';
 import { structSchema } from '../intern/generated/struct-schemas';
 import { withCore, RoonError } from '../core/session';
-import { Any, C, albumRow, duration, field, imageKeys, items, obj, resultRow, short, untilField, untilLoaded, wait, yearOf } from './graph';
+import { ALBUM_TYPES, Any, C, albumRow, duration, field, imageKeys, items, obj, resultRow, short, untilField, untilLoaded, wait, yearOf } from './graph';
 import { choose, entityText } from './library';
 
 export interface Filters {
@@ -15,9 +15,16 @@ export interface Filters {
   year_from?: number; year_to?: number; hires?: boolean; live?: boolean; compilation?: boolean; picks?: boolean;
   text?: string; favorites?: boolean; played_within_days?: number; not_played_within_days?: number; added_within_days?: number;
   sample_rate?: string; bits?: string; mqa?: boolean;   // 13 Oct 2026, Rosso's Focus: "44.1, 96" (kHz), "16, 24"
+  album_type?: string; exclude_album_type?: string; bootleg?: boolean;   // 22 Oct 2026: Focus' Album Type (main, single, ep …) and bootlegs
   storage?: string;   // where the albums live: "tidal", "qobuz" or "local" — matched against the Locations of the library
 }
 interface Member { name: string; propType: number; value: Buffer }
+/** "main release", "EP", "singles" … → Roon's AlbumType number (-1: unknown name). */
+function albumTypeOf(x: string): number {
+  const k = x.toLowerCase().replace(/releases?|s$/g, '').replace(/[^a-z]/g, '');
+  const alias: Record<string, string> = { mainrelease: 'main', album: 'main', extendedplay: 'ep', ost: 'soundtrack' };
+  return ALBUM_TYPES.indexOf((alias[k] ?? k) as typeof ALBUM_TYPES[number]);
+}
 
 // Values as the criteria structs want them: a length prefix around a list, an int? with its presence byte.
 const intList = (xs: number[]) => { const w = new BinaryWriter().flexInt(xs.length); for (const x of xs) w.integer(x); const b = w.toBuffer(); return new BinaryWriter().integer(b.length).bytes(b).toBuffer(); };
@@ -134,6 +141,14 @@ async function focusMembers(c: C, f: Filters, people: ('artist' | 'composer' | '
   if (f.live === true) m.push(yes('RequireIsLive')); else if (f.live === false) m.push(yes('ExcludeIsLive'));
   if (f.compilation === true) m.push(yes('RequireIsCompilation')); else if (f.compilation === false) m.push(yes('ExcludeIsCompilation'));
   if (f.picks) m.push(yes('RequireIsPick'));
+  if (f.bootleg === true) m.push(yes('RequireIsBootleg')); else if (f.bootleg === false) m.push(yes('ExcludeIsBootleg'));
+  for (const [arg, member] of [[f.album_type, 'RequireTypes'], [f.exclude_album_type, 'ExcludeTypes']] as const) {
+    if (!arg) continue;
+    const want = names(arg).map((x) => albumTypeOf(x));
+    const bad = want.findIndex((x) => x < 0);
+    if (bad >= 0) throw new RoonError(`album type "${names(arg)[bad]}": choose from ${ALBUM_TYPES.join(', ')}`, 'invalid');
+    m.push({ name: member, propType: 23, value: intList(want) });
+  }
   if (f.year_from && f.year_from > 1000) m.push({ name: 'MinDate', propType: 23, value: dateValue(f.year_from, 0, 0) });
   if (f.year_to && f.year_to > 1000) m.push({ name: 'MaxDate', propType: 23, value: dateValue(f.year_to, 12, 31) });
   const wanted = ([['artist', 'artists', 'RequirePerformers'], ['composer', 'composers', 'RequireComposers'], ['producer', 'producers', 'RequireProduction']] as const)
@@ -217,6 +232,8 @@ export async function focus(f: Filters, more: string | undefined, search: string
       bit_depths: numbers('BitsPerSample').map((x) => ({ bits: x.w, albums: x.n })),
       live: field(info, 'IsLiveCount') ?? 0, compilations: field(info, 'IsCompilationCount') ?? 0, roon_picks: field(info, 'IsPickCount') ?? 0,
       mqa: field(info, 'IsMQACount') ?? 0,
+      // Roon's album types (main release, single, EP, soundtrack …); the default, main, comes without a value.
+      album_types: hist('Types').map((x) => ({ type: ALBUM_TYPES[typeof x.w === 'number' ? x.w : 0] ?? 'unknown', albums: x.n })).sort((a, b) => b.albums - a.albums),
       // Raw histograms, to be named once measured (13 Oct 2026): where the albums live, and their file formats.
       storage: hist('Locations').map((x) => { const n = isRef(x.w) ? String(field(obj(c, x.w), 'Name') ?? '') : String(x.w); return { name: /tidal/i.test(n) ? 'TIDAL' : /qobuz/i.test(n) ? 'Qobuz' : 'Local', albums: x.n }; }),
     };

@@ -30,6 +30,9 @@ const FOCUS = {
   text: z.string().optional().describe('A word in the title or artist.'), favorites: z.boolean().optional(),
   sample_rate: z.string().optional().describe('Sample rates in kHz, comma-separated: "44.1, 96".'), bits: z.string().optional().describe('Bit depths, comma-separated: "16, 24".'), mqa: z.boolean().optional(),
   storage: z.enum(['tidal', 'qobuz', 'local']).optional().describe('Where the albums live.'),
+  album_type: z.string().optional().describe('Roon\'s album type, comma-separated: main, single, ep, compilation, soundtrack, show, other.'),
+  exclude_album_type: z.string().optional().describe('Album types to leave out, e.g. "single, ep".'),
+  bootleg: z.boolean().optional(),
   played_within_days: days, not_played_within_days: days, added_within_days: days,
 };
 type FocusArgs = { [K in keyof typeof FOCUS]?: z.infer<(typeof FOCUS)[K]> };
@@ -39,14 +42,14 @@ export function registerLibraryTools(server: McpServer): void {
   // ---- Focus ----
   server.registerTool('roon_library', {
     title: 'Library (Focus)',
-    description: 'The user\'s Roon LIBRARY — the albums they own or added — filtered and sorted with Roon\'s Focus. Filters combine freely: `min_stars` (Roon\'s editorial album rating; 5 = only five-star albums — THE tool for "five-star albums in my library"), `genre`, `label`, `artist`, `composer`, `producer`, `year_from` / `year_to`, `hires`, `live`, `compilation`, `picks`, `text`, `favorites`, `played_within_days` / `not_played_within_days` / `added_within_days`. `sort`: artist (default), added, released, most_played, title, popular, random — `random` is the way to "pick something from my library"; `ascending` flips a sort. `total` counts all matches; `offset` pages. Rows carry stars, year, format and a `key` for roon_play / roon_album. `matched` says which artist, composer or producer a name became.',
+    description: 'The user\'s Roon LIBRARY — the albums they own or added — filtered and sorted with Roon\'s Focus. Filters combine freely: `min_stars` (Roon\'s editorial album rating; 5 = only five-star albums — THE tool for "five-star albums in my library"), `genre`, `label`, `artist`, `composer`, `producer`, `year_from` / `year_to`, `hires`, `live`, `compilation`, `picks`, `album_type` / `exclude_album_type` (main, single, ep, compilation, soundtrack, show), `bootleg`, `text`, `favorites`, `played_within_days` / `not_played_within_days` / `added_within_days`. `sort`: artist (default), added, released, most_played, title, popular, random — `random` is the way to "pick something from my library"; `ascending` flips a sort. `total` counts all matches; `offset` pages. Rows carry stars, year, format and a `key` for roon_play / roon_album. `matched` says which artist, composer or producer a name became.',
     inputSchema: { ...FOCUS, sort: z.enum(['artist', 'added', 'released', 'most_played', 'title', 'popular', 'random']).optional(), ascending: z.boolean().optional(), limit: limit(100, 50), offset },
     annotations: READ,
   }, ({ sort, ascending, limit: n, offset: o, ...f }) => run(() => fc.library(filters(f), sort, ascending, n ?? 50, o ?? 0)));
 
   server.registerTool('roon_focus', {
     title: 'Focus panel',
-    description: 'Roon\'s Focus panel: what the library — or a filtered part of it — is MADE OF, with counts: genres and sub-genres, labels, artists, composers, producers, decades, star ratings, sample rates and bit depths, live albums, compilations, Roon\'s picks. Same filters as roon_library ("what labels are my five-star albums on", "which decades is my ECM collection from"). Use it for questions ABOUT the library and to find exact genre or label names for roon_library. The panel shows the top twenty of each list; `more` (labels, artists, composers, producers, genres) returns one list in full, optionally narrowed by `search`.',
+    description: 'Roon\'s Focus panel: what the library — or a filtered part of it — is MADE OF, with counts: genres and sub-genres, labels, artists, composers, producers, decades, star ratings, sample rates and bit depths, live albums, compilations, album types (main release, single, EP, soundtrack …), Roon\'s picks. Same filters as roon_library ("what labels are my five-star albums on", "which decades is my ECM collection from"). Use it for questions ABOUT the library and to find exact genre or label names for roon_library. The panel shows the top twenty of each list; `more` (labels, artists, composers, producers, genres) returns one list in full, optionally narrowed by `search`.',
     inputSchema: { ...FOCUS, more: z.enum(['labels', 'artists', 'composers', 'producers', 'genres']).optional(), search: z.string().optional().describe('With `more`: only names containing this.'), limit: limit(200, 40) },
     annotations: READ,
   }, ({ more: m, search, limit: n, ...f }) => run(() => fc.focus(filters(f), m, search, n ?? 40)));

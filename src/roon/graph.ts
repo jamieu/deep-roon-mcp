@@ -131,7 +131,10 @@ export function sourceOf(...os: Any[]): Source | undefined {
 export interface AlbumRow {
   kind: 'album'; key: string; title: string; artist: string; format?: string; year?: number; stars?: number; label?: string;
   source: Source; in_library?: boolean; favorite?: boolean; listen_later?: boolean; popularity?: number; image?: string; genres?: string[];
+  album_type?: string;
 }
+/** Roon's album types (Roon.Broker.Api.AlbumType, 22 Oct 2026 — Wayne's request: "Main Release, EP etc", Focus' Album Type). */
+export const ALBUM_TYPES = ['main', 'single', 'compilation', 'other', 'unknown', 'ep', 'soundtrack', 'show'] as const;
 export function albumRow(c: C, o: Any): AlbumRow {
   const fm = obj(c, field(o, 'AlbumFormat'));
   const r: AlbumRow = { kind: 'album', key: String(field(o, 'AlbumId') ?? ''), title: field(o, 'Title') ?? '', artist: clean(field(o, 'PerformedBy')), source: sourceOf(o) ?? (field(fm, 'IsStreaming') === true ? 'streaming' : 'library') };
@@ -147,6 +150,8 @@ export function albumRow(c: C, o: Any): AlbumRow {
   // The cover's image key (12 Oct 2026, for clients that draw): the Core serves these graph keys at
   // http://<core>:9330/image/<key>.jpg, or scaled at /image/<key>.<px>.jpg (measured: .300.jpg → 300 px, 32 kB).
   const img = imageKey(c, o); if (img) r.image = img;
+  // The album's type; Roon leaves the default (0, a main release) out of the object.
+  const at = field(o, 'Type'); r.album_type = ALBUM_TYPES[typeof at === 'number' ? at : 0] ?? 'unknown';
   return r;
 }
 export function resultRow(c: C, o: Any): Any {
