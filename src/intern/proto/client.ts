@@ -512,114 +512,17 @@ export class RoonClient {
     return parseAlbumEditInfo(decoded as Record<string, unknown>);
   }
 
-  // --- metadata editing: write side (Phase E) ---
+  // Geen schrijfkant voor albumgegevens (René, 26 okt 2026): editAlbum (titel, waardering, genres, labels via
+  // Library::Edit) is eruit — er hing geen tool aan, en wat er niet in staat kan ook niet per ongeluk aangesloten worden.
 
-  /**
-   * Edit an album's metadata via Library::Edit. **Proven live & reversible** for
-   * title, rating, genres and labels (set then call again with the prior values to
-   * restore). `albumId` is the AlbumLite::AlbumId long (see albumIdOf), NOT the oid.
-   *
-   * Encoding (validated against the live core): a LibraryEdit by-value struct whose
-   * Albums is an IList<AlbumEdit> (LengthPrefixed: int(len)+flexInt(count)+items);
-   * each AlbumEdit member uses a nested Edit*<T> wrapper (EditRequiredRef<string>
-   * for Title, EditOptionalVal<int> for Rating, EditList<string> for Genres/Labels).
-   *
-   * NOTE: boolean flags (IsPick/IsUserHidden/IsCompilation/…) are intentionally not
-   * supported — the core does not respond to EditOptionalVal<bool> edits (the apply
-   * hangs server-side; the encoding is correct). Genres/labels must be values Roon
-   * recognises; unknown strings return Success but are silently dropped.
-   */
-  editAlbum(albumId: bigint, edits: AlbumEdits): Promise<CallResult> {
-    const fields: StructField[] = [];
-    if (edits.title !== undefined) {
-      const w = this.structArg(EDIT_REQUIRED_REF_STR, [
-        { name: `string ${EDIT_REQUIRED_REF_STR}::EditValue`, propType: PropertyType.String, value: new BinaryWriter().string(edits.title).toBuffer() },
-      ]);
-      fields.push({ name: `${EDIT_REQUIRED_REF_STR} ${ALBUM_EDIT}::Title`, propType: PropertyType.Object, value: w });
-    }
-    if (edits.rating !== undefined) {
-      const w = this.structArg(EDIT_OPTIONAL_VAL_INT, [
-        { name: `int? ${EDIT_OPTIONAL_VAL_INT}::EditValue`, propType: PropertyType.NullableInt, value: new BinaryWriter().boolean(true).integer(edits.rating).toBuffer() },
-      ]);
-      fields.push({ name: `${EDIT_OPTIONAL_VAL_INT} ${ALBUM_EDIT}::Rating`, propType: PropertyType.Object, value: w });
-    }
-    if (edits.addGenres || edits.removeGenres) {
-      fields.push({ name: `${EDIT_LIST_STR} ${ALBUM_EDIT}::Genres`, propType: PropertyType.Object, value: this.editListStr(edits.addGenres ?? [], edits.removeGenres ?? []) });
-    }
-    if (edits.addLabels || edits.removeLabels) {
-      fields.push({ name: `${EDIT_LIST_STR} ${ALBUM_EDIT}::Labels`, propType: PropertyType.Object, value: this.editListStr(edits.addLabels ?? [], edits.removeLabels ?? []) });
-    }
-    if (!fields.length) throw new Error('editAlbum: no edits supplied');
-    return this.editAlbumStruct(albumId, fields);
-  }
-
-  /** Convenience: set just an album's rating (see editAlbum). */
-  editAlbumRating(albumId: bigint, rating: number): Promise<CallResult> {
-    return this.editAlbum(albumId, { rating });
-  }
-
-  /** AlbumLite::AlbumId (the long id Library::Edit keys on). */
+  /** AlbumLite::AlbumId (the long id favoriteAlbum keys on). */
   albumIdOf(album: RoonObject): bigint | undefined {
     for (const [k, v] of Object.entries(album.fields)) {
       if (k.endsWith('::AlbumId')) return typeof v === 'bigint' ? v : BigInt(String(v));
     }
     return undefined;
   }
-
-  /** Build an EditList<string> wrapper value (AddValues/RemoveValues). */
-  private editListStr(add: string[], remove: string[]): Buffer {
-    const list = (xs: string[]) => {
-      const w = new BinaryWriter().flexInt(xs.length);
-      for (const x of xs) w.string(x);
-      const b = w.toBuffer();
-      return new BinaryWriter().integer(b.length).bytes(b).toBuffer();
-    };
-    return this.structArg(EDIT_LIST_STR, [
-      { name: `System.Collections.Generic.IList<string> ${EDIT_LIST_STR}::AddValues`, propType: PropertyType.LengthPrefixed, value: list(add) },
-      { name: `System.Collections.Generic.IList<string> ${EDIT_LIST_STR}::RemoveValues`, propType: PropertyType.LengthPrefixed, value: list(remove) },
-    ]);
-  }
-
-  /** Build + send a single-album Library::Edit from pre-serialized AlbumEdit member fields. */
-  private editAlbumStruct(albumId: bigint, fields: StructField[]): Promise<CallResult> {
-    const albumEdit = this.structArg(ALBUM_EDIT, [
-      { name: `long ${ALBUM_EDIT}::AlbumId`, propType: PropertyType.Long, value: new BinaryWriter().long(albumId).toBuffer() },
-      ...fields,
-    ]);
-    // Albums: IList<AlbumEdit> as LengthPrefixed = int(len) + flexInt(count) + items.
-    const blob = new BinaryWriter().flexInt(1).bytes(albumEdit).toBuffer();
-    const libraryEdit = this.structArg(LIBRARY_EDIT, [
-      {
-        name: `System.Collections.Generic.IList<${ALBUM_EDIT}> ${LIBRARY_EDIT}::Albums`,
-        propType: PropertyType.LengthPrefixed,
-        value: new BinaryWriter().integer(blob.length).bytes(blob).toBuffer(),
-      },
-    ]);
-    return this.call(
-      'Library', 'Edit',
-      [{ type: 'LibraryEdit', name: 'edit' }, { type: 'ResultCallback', name: 'cb' }],
-      libraryEdit, this.serviceOid('Library'),
-    );
-  }
 }
-
-/** Reversible album metadata edits (see RoonClient.editAlbum). */
-export interface AlbumEdits {
-  title?: string;
-  rating?: number;
-  addGenres?: string[];
-  removeGenres?: string[];
-  addLabels?: string[];
-  removeLabels?: string[];
-}
-
-// Library::Edit by-value struct type names (members are addressed by full name,
-// which the server matches against its PropertyDescriptor.Name).
-const ALBUM_EDIT = 'Sooloos.Broker.Api.AlbumEdit';
-const EDIT_OPTIONAL_VAL_INT = 'Sooloos.Broker.Api.EditOptionalVal<int>';
-const EDIT_REQUIRED_REF_STR = 'Sooloos.Broker.Api.EditRequiredRef<string>';
-const EDIT_LIST_STR = 'Sooloos.Broker.Api.EditList<string>';
-const LIBRARY_EDIT = 'Sooloos.Broker.Api.LibraryEdit';
 
 // --- AlbumEditInfo decoding (by-value return) ---
 
