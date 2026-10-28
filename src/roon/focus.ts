@@ -17,6 +17,7 @@ export interface Filters {
   sample_rate?: string; bits?: string; mqa?: boolean;   // 13 Oct 2026, Rosso's Focus: "44.1, 96" (kHz), "16, 24"
   album_type?: string; exclude_album_type?: string; bootleg?: boolean;   // 22 Oct 2026: Focus' Album Type (main, single, ep …) and bootlegs
   storage?: string;   // where the albums live: "tidal", "qobuz" or "local" — matched against the Locations of the library
+  hidden?: 'include' | 'only';   // 29 Oct 2026, Stacks: the albums Roon hides (mostly the lesser copy of a duplicate) — also, or only those
 }
 interface Member { name: string; propType: number; value: Buffer }
 /** "main release", "EP", "singles" … → Roon's AlbumType number (-1: unknown name). */
@@ -114,6 +115,8 @@ async function focusMembers(c: C, f: Filters, people: ('artist' | 'composer' | '
     m.push({ name: 'RequireRatings', propType: 23, value: intList(Array.from({ length: 11 - min }, (_, i) => min + i)) });   // Roon's rating 1–10 = half stars
   }
   if (f.favorites) m.push(yes('RequireIsFavorite'));
+  if (f.hidden) m.push(yes('IncludeHidden'));
+  if (f.hidden === 'only') m.push(yes('RequireHidden'));
   if (f.text) m.push(text('TextFilter', f.text));
   if (f.genre) m.push({ name: 'RequireGenres', propType: 23, value: textList(names(f.genre)) });
   if (f.label) m.push({ name: 'RequireLabels', propType: 23, value: textList(names(f.label)) });

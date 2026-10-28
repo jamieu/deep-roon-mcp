@@ -24,8 +24,8 @@ export function playParams(c: C, p: number, shuffle = false): Buffer {
   if (shuffle) members.push({ name: 'Shuffle', propType: 2, value: new BinaryWriter().boolean(true).toBuffer() });
   return c.structArg('Sooloos.Broker.Api.PlayParameters', members);
 }
-function playAlbum(c: C, zone: bigint, album: bigint, p: number, shuffle: boolean) {
-  const args = Buffer.concat([buildArgs([Arg.ref(zone), Arg.sooid(c.profile())]), playParams(c, p, shuffle), buildArgs([Arg.ref(album), Arg.bool(false), Arg.bool(false)])]);
+function playAlbum(c: C, zone: bigint, album: bigint, p: number, shuffle: boolean, includeHidden = false) {
+  const args = Buffer.concat([buildArgs([Arg.ref(zone), Arg.sooid(c.profile())]), playParams(c, p, shuffle), buildArgs([Arg.ref(album), Arg.bool(false), Arg.bool(includeHidden)])]);
   return c.call('Transport', 'PlayAlbum',
     [{ type: 'Zone', name: 'zone' }, { type: 'Sooid', name: 'profileid' }, { type: 'PlayParameters', name: 'parameters' }, { type: 'AlbumBase', name: 'album' },
      { type: 'bool', name: 'favoritesonly' }, { type: 'bool', name: 'includehidden' }, { type: 'ResultCallback<PlayFeedback>', name: 'cb' }], args, c.serviceOid('Transport'));
@@ -54,12 +54,13 @@ export async function started(zoneName: string, p: number): Promise<{ started?: 
   return { started: false, state };
 }
 
-export async function play(key: string, zoneName: string, how: How, shuffle: boolean) {
+/** `includeHidden` (29 Oct 2026, Stacks): an album Roon hides — without it Roon plays none of its tracks. */
+export async function play(key: string, zoneName: string, how: How, shuffle: boolean, includeHidden = false) {
   const p = PRIORITY[how];
   const r = await withCore(async (c) => {
     const z = findZone(c, zoneName);
     const album = await findAlbum(c, key);
-    const res = await playAlbum(c, z.oid, album.oid, p, shuffle);
+    const res = await playAlbum(c, z.oid, album.oid, p, shuffle, includeHidden);
     log(`play (${how}${shuffle ? ', shuffled' : ''}): ${field(album, 'Title')} on ${z.name} → ${res.success ? 'ok' : res.status}`);
     if (!res.success) throw new RoonError(`Roon refused to play it (${res.status})`);
     return { zone: z.name, how, shuffle: shuffle || undefined, title: field(album, 'Title'), artist: clean(field(album, 'PerformedBy')) };
