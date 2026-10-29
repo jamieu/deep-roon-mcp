@@ -11,11 +11,10 @@ import { isRef } from '../intern';
 import { PropertyType } from '../intern/proto/objects';
 import { BinaryReader } from '../intern/proto/reader';
 import { BinaryWriter } from '../intern/proto/writer';
-import { Arg, buildArgs } from '../intern/proto/serializer';
 import { withCore, RoonError } from '../core/session';
 import { log } from '../core/log';
-import { Any, C, albumRow, field, items, obj, short, untilField, untilLoaded, wait } from './graph';
-import { findAlbum, fullAlbum, performer } from './library';
+import { Any, C, albumRow, field, obj, short, untilLoaded, wait } from './graph';
+import { findAlbum, performer } from './library';
 
 const API = 'Sooloos.Broker.Api.';
 const LIBRARY_EDIT = `${API}LibraryEdit`, ALBUM_EDIT = `${API}AlbumEdit`, CREDIT_EDIT = `${API}CreditEdit`;
@@ -37,73 +36,20 @@ function valueList(c: C, v: Any): Any[] {
 }
 
 // ---- finding the albums ----
-// René's findAlbum: the graph, else Library::GetAlbumLite with 4 s for the answer and 2 s for the album to arrive — and
-// one message, "Roon knows no album", for the three ways that can fail. Reported 29 Oct 2026 on two Qobuz albums in the
-// library that roon_search finds at once (Personal History 2109487; Benita, Time for a Change 2634543):
-// roon_versions_group failed on them twice in a row, and worked as soon as roon_versions had loaded the album or one of
-// its copies. Not reproduced: on a new connection both keys resolve in under 0.1 s, alone, after a search, or after
-// their other copy. So, in turn: the quick lookup; the versions of the albums that were found (what fixed it for the
-// reporter); one patient ask; and an error that says which way it failed (also in the log).
-
-const inGraph = (c: C, key: string) => [...c.graph.objects.values()].find((o) => /\.Album(Lite)?$/.test(o.typeName) && String(field(o, 'AlbumId') ?? '') === key && field(o, 'Title') !== undefined);
-
-/** One patient Library::GetAlbumLite: up to 15 s for the answer (a request's own limit) and 5 s for the album to arrive. */
-async function askForAlbum(c: C, key: string): Promise<{ al?: Any; why?: string }> {
-  const t0 = Date.now();
-  const res = await short(c.call('Library', 'GetAlbumLite', [{ type: 'long', name: 'albumid' }, { type: 'ResultCallback<AlbumLite>', name: 'cb_result' }],
-    buildArgs([Arg.long(BigInt(key))]), c.serviceOid('Library')), 15000);
-  let al: Any, why: string | undefined;
-  if (!res) why = 'no answer within 15 s (Roon busy, or a key it doesn\'t know)';
-  else if (!res.success) why = `Roon answered ${res.status}`;
-  else {
-    const v = res.payload.length ? c.graph.decodeReturnValue(Uint8Array.from(res.payload)) : null;
-    if (!isRef(v)) why = 'Roon answered without an album';
-    else {
-      await untilLoaded(c, [v], 5000);
-      const o = c.graph.getObject(v.$ref);
-      if (o && field(o, 'Title') !== undefined) al = o;
-      else why = o ? `Roon named the album (object ${v.$ref}) but didn't send its details` : `Roon named an album (object ${v.$ref}) but never sent it`;
-    }
-  }
-  log(`album lookup ${key}: ${al ? 'found' : why} after ${Date.now() - t0} ms`);
-  return { al, why };
+// René's findAlbum, whose wait for an album Roon hasn't loaded lately is longer since 29 Oct 2026 (Personal History
+// 2109487 and Benita, Time for a Change 2634543 failed at 4 s and worked on the next call). Only albums in the library
+// (Source 1) have edit layers.
+const inLibrary = (al: Any) => field(al, 'Source') === 1;
+async function libraryAlbum(c: C, key: string): Promise<Any> {
+  const al = await findAlbum(c, key);
+  if (!inLibrary(al)) throw new RoonError(`"${field(al, 'Title')}" (${key}) isn't in the library — roon_library_add first`, 'invalid');
+  return al;
 }
-
-/** The library versions an album's page lists — its group and the other copies Roon knows — loaded into the graph, the
- *  way roon_versions comes to hold them. */
-async function loadVersions(c: C, al: Any): Promise<void> {
-  const full = await fullAlbum(c, al);
-  if (!isRef(full)) return;
-  await untilField(c, full.$ref, 'AlternateVersionsReady', 4500);
-  const av = obj(c, field(c.graph.getObject(full.$ref), 'AlternateAlbumVersions'));
-  await untilLoaded(c, ['LibraryGroupVersions', 'LibraryOtherVersions'].flatMap((n) => items(c, field(av, n))).map((x) => field(x, 'Album')).filter(isRef), 2500);
-}
-
-/** The albums for keys as they are in the library (only those have edit layers), in the order of the keys. */
 async function libraryAlbums(c: C, keys: string[]): Promise<Any[]> {
-  const found = new Map<string, Any>();
-  for (const k of keys) {
-    try { found.set(k, await findAlbum(c, k)); }
-    catch (e) { if (!(e instanceof RoonError && e.kind === 'not_found')) throw e; }
-  }
-  let missing = keys.filter((k) => !found.has(k));
-  if (missing.length && found.size) {
-    for (const al of found.values()) await loadVersions(c, al);
-    for (const k of missing) { const o = inGraph(c, k); if (o) found.set(k, o); }
-    missing = keys.filter((k) => !found.has(k));
-  }
-  for (const k of missing) {
-    const { al, why } = await askForAlbum(c, k);
-    if (!al) throw new RoonError(`Roon knows no album with key ${k}: ${why}. Check the key with roon_search; if it finds the album, try again in a minute`, 'not_found');
-    found.set(k, al);
-  }
-  return keys.map((k) => {
-    const al = found.get(k);
-    if (field(al, 'Source') !== 1) throw new RoonError(`"${field(al, 'Title')}" (${k}) isn't in the library — roon_library_add first`, 'invalid');
-    return al;
-  });
+  const albums: Any[] = [];
+  for (const k of keys) albums.push(await libraryAlbum(c, k));
+  return albums;
 }
-const libraryAlbum = async (c: C, key: string): Promise<Any> => (await libraryAlbums(c, [key]))[0];
 const idOf = (al: Any) => BigInt(field(al, 'AlbumId'));
 const editInfo = async (c: C, al: Any) => (await c.getAlbumEditInfo(al.oid)).raw;
 
@@ -203,17 +149,21 @@ async function duplicateOf(c: C, al: Any): Promise<{ of?: string; parent?: Any; 
 const keyOf = (al: Any) => String(field(al, 'AlbumId') ?? '');
 /** The primary of the group an album is in: DuplicateOf followed to the album that's a duplicate of nothing. Roon's own
  *  groups can chain — reported 29 Oct 2026 on Lee Douglas, New York Story: 1668143 under 152367, 152367 under 2454063 —
- *  so the first link isn't always the primary. `via`: the albums passed on the way, the primary last. */
-async function primaryOf(c: C, al: Any): Promise<{ primary: Any; via: string[] }> {
+ *  so the first link isn't always the primary. `via`: the albums passed on the way, the primary last. `outside`: the
+ *  chain reached an album that isn't in the library (no edit layers to follow), or one Roon no longer knows; `key` is
+ *  then that album's, and `primary` the album if Roon sent it. */
+async function primaryOf(c: C, al: Any): Promise<{ primary?: Any; key: string; via: string[]; outside?: boolean }> {
   const via: string[] = [];
   let cur = al;
   for (let i = 0; i < 10; i++) {
     const d = await duplicateOf(c, cur);
     if (!d.of || d.of === keyOf(cur) || via.includes(d.of)) break;
     via.push(d.of);
-    cur = d.parent && field(d.parent, 'Title') !== undefined ? d.parent : await libraryAlbum(c, d.of);
+    const next = d.parent && field(d.parent, 'Title') !== undefined ? d.parent : await findAlbum(c, d.of).catch(() => undefined);
+    if (!next || !inLibrary(next)) return { primary: next, key: d.of, via, outside: true };
+    cur = next;
   }
-  return { primary: cur, via };
+  return { primary: cur, key: keyOf(cur), via };
 }
 /** DuplicateOf as an edit: the primary's object (into its group), ClearEdits (drop an edit made earlier), or ClearBaseValue
  *  (overrule Roon's own grouping). Always the same three members, as with the credits. */
@@ -230,7 +180,8 @@ const versionRow = (c: C, al: Any, d: { of?: string }, groupPrimary?: string) =>
 
 /** Albums of the library as versions of one album: the primary of the first album's group — the first album itself,
  *  unless it's already a version in a group, whose primary then stays (reported 29 Oct 2026: ten calls refused with
- *  "make that one the first key"; switching a group's primary isn't done here). An album that was taken out of a group
+ *  "make that one the first key"), and the answer says so (`primary_kept`); switching a group's primary isn't done here.
+ *  An album whose own group leads out of the library is simply grouped here. An album that was taken out of a group
  *  Roon made goes back by dropping that edit, so Roon's own grouping holds again; otherwise DuplicateOf points at the
  *  primary, and the primary is marked a duplicate of nothing — both as Roon's own Edit › Group alternate versions writes
  *  them (measured 29 Oct 2026 on Yowzers/Yowsers: EditValue on the lesser copy, ClearBaseValue on the primary). */
@@ -240,18 +191,19 @@ export async function groupVersions(keys: string[]) {
     if (unique.length < 2) throw new RoonError('Two or more album keys: the first becomes the primary version', 'invalid');
     const albums = await libraryAlbums(c, unique);
     const steps: string[] = [];
-    const { primary, via } = await primaryOf(c, albums[0]);
-    const pk = keyOf(primary);
-    if (via.length) steps.push(`${unique[0]} is already a version in the group of ${pk}${via.length > 1 ? ` (via ${via.slice(0, -1).join(', ')})` : ''}, so ${pk} stays the primary`);
+    const first = await primaryOf(c, albums[0]);
+    if (first.outside) throw new RoonError(`${unique[0]} is a version in the group of ${first.key}, which isn't in the library — put another key first, or take ${unique[0]} out of that group (roon_versions_ungroup)`, 'invalid');
+    const primary = first.primary, pk = first.key, kept = pk !== unique[0];
+    if (kept) steps.push(`${unique[0]} is already a version in the group of ${pk}${first.via.length > 1 ? ` (via ${first.via.slice(0, -1).join(', ')})` : ''}, so ${pk} stays the primary`);
     let marked = (await duplicateOf(c, primary)).primary;
     const others = albums.filter((al, i) => keyOf(al) !== pk && albums.findIndex((x) => keyOf(x) === keyOf(al)) === i);
     for (const al of others) {
       const k = keyOf(al);
-      if (keyOf((await primaryOf(c, al)).primary) === pk) { steps.push(`${k}: already in the group`); continue; }
+      if ((await primaryOf(c, al)).key === pk) { if (k !== unique[0]) steps.push(`${k}: already in the group`); continue; }
       if ((await duplicateOf(c, al)).edited) {
         await edit(c, [{ al, members: [duplicateEdit(c, { clearEdits: true })] }]);
         await wait(800);
-        if (keyOf((await primaryOf(c, al)).primary) === pk) { steps.push(`${k}: back in Roon's own group (edit dropped)`); continue; }
+        if ((await primaryOf(c, al)).key === pk) { steps.push(`${k}: back in Roon's own group (edit dropped)`); continue; }
       }
       await edit(c, [...(marked ? [] : [{ al: primary, members: [duplicateEdit(c, { clearBase: true })] }]), { al, members: [duplicateEdit(c, { primary: primary.oid })] }]);
       if (!marked) steps.push(`${pk}: marked the primary`);
@@ -261,9 +213,12 @@ export async function groupVersions(keys: string[]) {
     log(`versions_group: ${field(primary, 'Title')} (${pk}) ← ${others.map(keyOf).join(', ')}: ${steps.join('; ')}`);
     await wait(800);
     const rows: Any[] = [];
-    for (const al of others) rows.push(versionRow(c, al, await duplicateOf(c, al), keyOf((await primaryOf(c, al)).primary)));
+    for (const al of others) rows.push(versionRow(c, al, await duplicateOf(c, al), (await primaryOf(c, al)).key));
     const ok = rows.every((r) => (r.group_primary ?? r.version_of) === pk);
-    return { ok, primary: albumRow(c, primary), versions: rows, steps, note: ok ? undefined : 'Roon said ok, but not every album is in the group (version_of and group_primary say where each one is)' };
+    const notes = [ok ? '' : 'Roon said ok, but not every album is in the group (version_of and group_primary say where each one is)',
+      kept ? `${unique[0]} was already a version in the group of ${pk}, so ${pk} stayed the primary, not ${unique[0]}` : ''].filter(Boolean);
+    return { ok, primary: albumRow(c, primary), primary_kept: kept || undefined, requested_primary: kept ? unique[0] : undefined, versions: rows, steps,
+             note: notes.join('. ') || undefined };
   });
 }
 
@@ -273,7 +228,7 @@ export async function ungroupVersion(key: string) {
     const al = await libraryAlbum(c, key);
     let d = await duplicateOf(c, al);
     if (!d.of) throw new RoonError(`"${field(al, 'Title')}" isn't a version in another album's group — if it's the primary, ungroup the other versions (roon_versions marks the group's albums grouped, its primary primary)`, 'invalid');
-    const was = d.of, wasPrimary = keyOf((await primaryOf(c, al)).primary); const steps: string[] = [];
+    const was = d.of, wasPrimary = (await primaryOf(c, al)).key; const steps: string[] = [];
     if (d.edited) {
       await edit(c, [{ al, members: [duplicateEdit(c, { clearEdits: true })] }]);
       steps.push('dropped the grouping edit'); await wait(800); d = await duplicateOf(c, al);
