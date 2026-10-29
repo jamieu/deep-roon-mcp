@@ -149,10 +149,12 @@ export async function findAlbum(c: C, key: string): Promise<Any> {
   const inGraph = [...c.graph.objects.values()].find((o) => /\.Album(Lite)?$/.test(o.typeName) && String(field(o, 'AlbumId') ?? '') === key && field(o, 'Title') !== undefined);
   if (inGraph) return inGraph;
   if (!/^\d+$/.test(key)) throw new RoonError('An album key is a number', 'invalid');
-  const res = await short(c.call('Library', 'GetAlbumLite', [{ type: 'long', name: 'albumid' }, { type: 'ResultCallback<AlbumLite>', name: 'cb_result' }], buildArgs([Arg.long(BigInt(key))]), library(c)));
+  // Patient: an album Roon hasn't loaded lately can take it longer than 4 s to name (seen 29 Oct 2026 on Qobuz albums in
+  // the library). Roon doesn't answer at all for a key it doesn't know, so a wrong key takes the full 15 s.
+  const res = await short(c.call('Library', 'GetAlbumLite', [{ type: 'long', name: 'albumid' }, { type: 'ResultCallback<AlbumLite>', name: 'cb_result' }], buildArgs([Arg.long(BigInt(key))]), library(c)), 15000);
   const v = res?.success && res.payload.length ? c.graph.decodeReturnValue(Uint8Array.from(res.payload)) : null;
-  if (isRef(v)) { await untilLoaded(c, [v], 2000); const o = c.graph.getObject(v.$ref); if (o && field(o, 'Title') !== undefined) return o; }
-  throw new RoonError(`Roon knows no album with key ${key}`, 'not_found');
+  if (isRef(v)) { await untilLoaded(c, [v], 5000); const o = c.graph.getObject(v.$ref); if (o && field(o, 'Title') !== undefined) return o; }
+  throw new RoonError(`Roon knows no album with key ${key}${res ? '' : ' (no answer in 15 s)'}`, 'not_found');
 }
 
 /** The tracks for a list of keys, in that order; an unknown key gives an error naming it. */
