@@ -35,9 +35,20 @@ function valueList(c: C, v: Any): Any[] {
   return out;
 }
 
-/** The album as it is in the library: only those have edit layers. */
+/** The album as it is in the library: only those have edit layers. Asked twice: a first lookup of an album the Core
+ *  hasn't touched lately can miss findAlbum's limits (4 s to answer, 2 s for the album to arrive) — reported 29 Oct 2026,
+ *  "Roon knows no album with key 2109487", then fine once roon_versions had looked it up. The late answer still lands in
+ *  the graph, so a second try after a pause finds it; a key Roon really doesn't know takes ~10 s to say so. */
 async function libraryAlbum(c: C, key: string): Promise<Any> {
-  const al = await findAlbum(c, key);
+  let al: Any;
+  try { al = await findAlbum(c, key); }
+  catch (e) {
+    if (!(e instanceof RoonError && e.kind === 'not_found')) throw e;
+    await wait(1500);
+    al = await findAlbum(c, key).catch(() => {
+      throw new RoonError(`Roon knows no album with key ${key} (asked twice) — check the key with roon_search or roon_library`, 'not_found');
+    });
+  }
   if (field(al, 'Source') !== 1) throw new RoonError(`"${field(al, 'Title')}" isn't in the library — roon_library_add first`, 'invalid');
   return al;
 }
