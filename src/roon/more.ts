@@ -218,9 +218,11 @@ export async function versions(key: string) {
     const group = (ns: string[]) => ns.flatMap((n) => items(c, field(av, n)));
     const all: [Any, boolean][] = [...group(['LibraryGroupVersions', 'LibraryOtherVersions']).map((x): [Any, boolean] => [x, true]), ...group(['StreamingVersions']).map((x): [Any, boolean] => [x, false])];
     await untilLoaded(c, all.map(([x]) => field(x, 'Album')).filter(isRef), 2500);
+    // The library versions in this album's own version group (shown as one album), apart from the other copies Roon knows.
+    const grouped = new Set(group(['LibraryGroupVersions']).map((x) => String(field(obj(c, field(x, 'Album')), 'AlbumId'))));
     const rate = (r: Any) => { const m = /(\d+(?:\.\d+)?)\s*kHz|FLAC (\d+)\/(\d+)/.exec(r.format ?? ''); return m ? Number(m[1] ?? m[2]) : 0; };
     const bits = (r: Any) => { const m = /(\d+)\s*bit|\/(\d+)$/.exec(r.format ?? ''); return m ? Number(m[1] ?? m[2]) : 0; };
-    const rows = all.map(([x, lib]) => { const a = obj(c, field(x, 'Album')); if (!a || field(a, 'Title') === undefined) return null; const r: Any = albumRow(c, a); r.tracks = field(x, 'TrackCount') ?? undefined; r.lib = lib; return r; })
+    const rows = all.map(([x, lib]) => { const a = obj(c, field(x, 'Album')); if (!a || field(a, 'Title') === undefined) return null; const r: Any = albumRow(c, a); r.tracks = field(x, 'TrackCount') ?? undefined; if (grouped.has(r.key)) r.grouped = true; r.lib = lib; return r; })
       .filter((r): r is Any => !!r && r.key !== String(field(al, 'AlbumId')));
     const order = (a: Any, b: Any) => rate(b) - rate(a) || bits(b) - bits(a) || (b.popularity ?? 0) - (a.popularity ?? 0);
     const strip = ({ lib, ...r }: Any) => r;   // eslint-disable-line @typescript-eslint/no-unused-vars

@@ -209,7 +209,7 @@ export function registerLibraryTools(server: McpServer): void {
   // ---- other versions, more like this ----
   server.registerTool('roon_versions', {
     title: 'Other versions',
-    description: 'The other versions Roon knows of an album (by album `key`): remasters, deluxe editions, mono/stereo, hi-res — `in_library` and `streaming` (at Qobuz or TIDAL — each row says its `source`), best format first, each with year, format, number of tracks and a `key`. For "is there a hi-res version", "which editions exist".',
+    description: 'The other versions Roon knows of an album (by album `key`): remasters, deluxe editions, mono/stereo, hi-res — `in_library` and `streaming` (at Qobuz or TIDAL — each row says its `source`), best format first, each with year, format, number of tracks and a `key`. `grouped: true` marks the library versions in this album\'s own version group (Roon shows them as one album); the others in `in_library` are separate albums. For "is there a hi-res version", "which editions exist".',
     inputSchema: { key: z.string().describe('An album key.') },
     annotations: READ,
   }, ({ key }) => run(() => more.versions(key)));
