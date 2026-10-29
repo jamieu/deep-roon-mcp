@@ -222,11 +222,12 @@ export async function versions(key: string) {
     const grouped = new Set(group(['LibraryGroupVersions']).map((x) => String(field(obj(c, field(x, 'Album')), 'AlbumId'))));
     const rate = (r: Any) => { const m = /(\d+(?:\.\d+)?)\s*kHz|FLAC (\d+)\/(\d+)/.exec(r.format ?? ''); return m ? Number(m[1] ?? m[2]) : 0; };
     const bits = (r: Any) => { const m = /(\d+)\s*bit|\/(\d+)$/.exec(r.format ?? ''); return m ? Number(m[1] ?? m[2]) : 0; };
-    const rows = all.map(([x, lib]) => { const a = obj(c, field(x, 'Album')); if (!a || field(a, 'Title') === undefined) return null; const r: Any = albumRow(c, a); r.tracks = field(x, 'TrackCount') ?? undefined; if (grouped.has(r.key)) r.grouped = true; r.lib = lib; return r; })
+    const rows = all.map(([x, lib]) => { const a = obj(c, field(x, 'Album')); if (!a || field(a, 'Title') === undefined) return null; const r: Any = albumRow(c, a); r.tracks = field(x, 'TrackCount') ?? undefined; if (grouped.has(r.key)) { r.grouped = true; if (field(a, 'IsDuplicate') !== true) r.primary = true; } r.lib = lib; return r; })
       .filter((r): r is Any => !!r && r.key !== String(field(al, 'AlbumId')));
     const order = (a: Any, b: Any) => rate(b) - rate(a) || bits(b) - bits(a) || (b.popularity ?? 0) - (a.popularity ?? 0);
     const strip = ({ lib, ...r }: Any) => r;   // eslint-disable-line @typescript-eslint/no-unused-vars
-    return { album: albumRow(c, al), in_library: rows.filter((r) => r.lib).sort(order).map(strip), streaming: rows.filter((r) => !r.lib).sort(order).map(strip) };
+    const self: Any = albumRow(c, al); if (grouped.size > 1 && field(al, 'IsDuplicate') !== true) self.primary = true;
+    return { album: self, in_library: rows.filter((r) => r.lib).sort(order).map(strip), streaming: rows.filter((r) => !r.lib).sort(order).map(strip) };
   });
 }
 export async function similarAlbum(key: string, limit: number) {
