@@ -55,13 +55,27 @@ async function edit(c: C, albums: { al: Any; members: Member[] }[]): Promise<voi
 
 // ---- credits ----
 interface CreditRow { artist_key: string; artist: string; role: string }
-/** The album's credits as Roon shows them (Values), and the user's own edits to them (AddValues, RemoveValues). */
-async function creditsOf(c: C, al: Any): Promise<{ all: CreditRow[]; added: CreditRow[]; removed: CreditRow[] }> {
+/** The album's credits as Roon shows them (Values), Roon's own without the user's edits (BaseValues), and those edits
+ *  (AddValues, RemoveValues). */
+async function creditsOf(c: C, al: Any): Promise<{ all: CreditRow[]; base: CreditRow[]; added: CreditRow[]; removed: CreditRow[] }> {
   const w = field(await editInfo(c, al), 'Credits');
-  const [all, added, removed] = ['Values', 'AddValues', 'RemoveValues'].map((n) => valueList(c, field(w, n)));
-  await untilLoaded(c, [...all, ...added, ...removed].map((x) => field(x, 'Performer')).filter(isRef), 2000);
+  const [all, base, added, removed] = ['Values', 'BaseValues', 'AddValues', 'RemoveValues'].map((n) => valueList(c, field(w, n)));
+  await untilLoaded(c, [...all, ...base, ...added, ...removed].map((x) => field(x, 'Performer')).filter(isRef), 2000);
   const row = (x: Any): CreditRow => { const p = obj(c, field(x, 'Performer')); return { artist_key: String(field(p, 'PerformerId') ?? ''), artist: field(p, 'Name') ?? '', role: field(x, 'Role') ?? '' }; };
-  return { all: all.map(row), added: added.map(row), removed: removed.map(row) };
+  return { all: all.map(row), base: base.map(row), added: added.map(row), removed: removed.map(row) };
+}
+/** AlbumEdit.Credits, an EditList<CreditEdit>: ClearEdits drops the album's credit edits, AddValues and RemoveValues add to
+ *  them. Always the three members: the type is defined once per connection, with the members it's sent with. */
+function creditsEdit(c: C, o: { clearEdits?: boolean; add?: CreditRow[]; remove?: CreditRow[] }): Member {
+  const ce = (x: CreditRow) => c.structArg(CREDIT_EDIT, [
+    { name: `long ${CREDIT_EDIT}::Performer`, propType: PropertyType.Long, value: new BinaryWriter().long(BigInt(x.artist_key)).toBuffer() },
+    { name: `string ${CREDIT_EDIT}::Role`, propType: PropertyType.String, value: new BinaryWriter().string(x.role).toBuffer() },
+  ]);
+  return { name: `${CREDITS} ${ALBUM_EDIT}::Credits`, propType: PropertyType.Object, value: c.structArg(CREDITS, [
+    { name: `bool ${CREDITS}::ClearEdits`, propType: PropertyType.Bool, value: new BinaryWriter().boolean(o.clearEdits === true).toBuffer() },
+    { name: `System.Collections.Generic.IList<${CREDIT_EDIT}> ${CREDITS}::AddValues`, propType: PropertyType.LengthPrefixed, value: lengthList((o.add ?? []).map(ce)) },
+    { name: `System.Collections.Generic.IList<${CREDIT_EDIT}> ${CREDITS}::RemoveValues`, propType: PropertyType.LengthPrefixed, value: lengthList((o.remove ?? []).map(ce)) },
+  ]) };
 }
 
 /** A credit on (or off) an album: an artist Roon knows, in a role. Off also takes the artist's name from the album's credits. */
@@ -82,23 +96,32 @@ export async function albumCredit(key: string, artist: string, role: string, on:
     }
     const same = (x: CreditRow) => x.artist_key === artistKey && x.role.toLowerCase() === wantRole;
     const had = before.all.find(same);
-    const credit = { artist: name, artist_key: artistKey, role: had?.role ?? role.trim() };
+    const credit: CreditRow = { artist: name, artist_key: artistKey, role: had?.role ?? role.trim() };
     if (!!had === on) return { ok: true, album: albumRow(c, al), credit, credited: on, note: on ? 'Already credited — nothing changed' : 'No such credit on this album — nothing changed' };
-    const ce = c.structArg(CREDIT_EDIT, [
-      { name: `long ${CREDIT_EDIT}::Performer`, propType: PropertyType.Long, value: new BinaryWriter().long(BigInt(artistKey)).toBuffer() },
-      { name: `string ${CREDIT_EDIT}::Role`, propType: PropertyType.String, value: new BinaryWriter().string(credit.role).toBuffer() },
-    ]);
-    // Always both lists, one of them empty: the type is defined once per connection, with the members it's sent with.
-    const list = c.structArg(CREDITS, [
-      { name: `System.Collections.Generic.IList<${CREDIT_EDIT}> ${CREDITS}::AddValues`, propType: PropertyType.LengthPrefixed, value: lengthList(on ? [ce] : []) },
-      { name: `System.Collections.Generic.IList<${CREDIT_EDIT}> ${CREDITS}::RemoveValues`, propType: PropertyType.LengthPrefixed, value: lengthList(on ? [] : [ce]) },
-    ]);
-    await edit(c, [{ al, members: [{ name: `${CREDITS} ${ALBUM_EDIT}::Credits`, propType: PropertyType.Object, value: list }] }]);
-    log(`album_credit: ${field(al, 'Title')} ${on ? '+' : '−'} ${name} (${credit.role})`);
+    // Undoing an edit leaves no trace, as in Roon's own editor (measured 29 Oct 2026: its delete of a credit the user had
+    // added left the credit edits empty). Roon's lists don't do that by themselves — a RemoveValues for a credit that's
+    // only in AddValues stays behind as a removal — so an undo drops the album's credit edits and puts the others back.
+    const inBase = before.base.some(same);
+    const undo = on ? inBase && before.removed.some(same) : !inBase && before.added.some(same);
+    const steps: string[] = [];
+    if (undo) {
+      const add = before.added.filter((x) => !same(x)), remove = before.removed.filter((x) => !same(x));
+      await edit(c, [{ al, members: [creditsEdit(c, { clearEdits: true })] }]);
+      steps.push('dropped the credit edits');
+      if (add.length || remove.length) {
+        await wait(300);
+        await edit(c, [{ al, members: [creditsEdit(c, { add, remove })] }]);
+        steps.push(`put the other ${add.length + remove.length} back`);
+      }
+    } else {
+      await edit(c, [{ al, members: [creditsEdit(c, on ? { add: [credit] } : { remove: [credit] })] }]);
+      steps.push(on ? 'added' : 'removed');
+    }
+    log(`album_credit: ${field(al, 'Title')} ${on ? '+' : '−'} ${name} (${credit.role}): ${steps.join(', ')}`);
     await wait(500);
     const after = await creditsOf(c, al);
     const now = !!after.all.find(same);
-    return { ok: now === on, album: albumRow(c, al), credit, credited: now, your_edits: { added: after.added, removed: after.removed },
+    return { ok: now === on, album: albumRow(c, al), credit, credited: now, steps, your_edits: { added: after.added, removed: after.removed },
              note: now === on ? undefined : `Roon said ok, but nothing changed${on ? ' — use a role Roon knows, as roon_album shows them with credits: true ("Piano", "Producer", "Drums" …)' : ''}` };
   });
 }
